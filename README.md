@@ -24,7 +24,7 @@ EasySafe is a virtual distributed filesystem. Filesystem data is encrypted at re
 
 ### Terminology
 
-* **Archive:** A filesystem identified by a passphrase.
+* **Archive:** A read-write filesystem identified by a passphrase.
 
 ### Concatenation operator
 
@@ -76,10 +76,11 @@ A number of cryptographic primitives are used here. The name by which they appea
 | tagLength      | 256 bits               |
 | memorySize     | 1 GiB                  |
 | iterations     | 40                     |
+| version        | 13                     |
 
 ## Basic constants
 | Constant name    | Value | Unit | Description
-|------------------|-------|------|
+|------------------|-------|------|----|
 | HASH_LEN         | 64              | bytes | Output length of Hash() function
 | SYM_KEY_LEN      | 32              | bytes | Symmetric key size
 | SYM_IV_LEN       | 16              | bytes | Symmetric initialization vector size in unauthenticated mode (equivalent to block size)
@@ -629,7 +630,7 @@ As a design goal, the remaining Argon2 parameters were chosen so that a system i
 
 According to the Steam Hardware and Software Survey of November 2018, over 95% of systems were reported as having at least 4GB of RAM and 2 CPUs.
 
-The time factor was calculated by selecting the maximum number of iterations that could be performed with an average elapsed time of under 15 seconds using an Amazon t3.small instance (2 vCPU, 2GiB RAM) running a fresh installation of Ubuntu 18.04[1], as a proxy to the hypothetical 5th percentile home user with 75% load.
+The time factor was calculated by selecting the maximum number of iterations that could be performed with an average elapsed time of under 15 seconds using an Amazon t3.small instance (2 vCPU, 2GiB RAM) running a fresh installation of Ubuntu 18.04[1] with the T3 Unlimited option enabled, as a proxy to the hypothetical 5th percentile home user with 75% load.
 
 The following command was found to have an average completion time of 14.967 seconds, with a standard deviation of 82.37ms (n=100):
 
@@ -886,9 +887,14 @@ Later versions may support page-independent keys with deterministic IVs as an op
 ### What if I want to revoke someone's access to an archive, or change the passphrase?
 Archive passwords are immutable. One option is to migrate the data in the archive to one with a new passphrase. This passphrase would then need to be distributed to the authorized parties. The means for doing this are beyond the scope of this document.
 
+### Why are side channel attacks excluded from the models?
+Side channel attacks are very difficult to model. Although design decisions can make a system more or less resistant to some side channel attacks, no design can possibly foil all of them. Major classes of security issues come down to hardware, implementation and physical security concerns.
+
+Certain real-world adversaries possess capabilities that go beyond the security model here and can easily break it. For instance, EasySafe has no means of protecting you if you are imprisoned and tortured until you reveal your passphrase. EasySafe cannot protect you from adversaries that participate in the thriving clandestine market for undisclosed exploits that will allow them access to your system. It also can't protect you if your adversary has access to a secret backdoor built into your CPU by the manufacturer.
+
 ### Isn't this really great for bad people?
-Cryptography lets people talk and do business, even in the presence of adversaries. It's terrible for bad people on principle. EasySafe in particular is not a secure option for organized crime or terror, since all the security depends on a single unchangable passphrase. If any member of the group disclosed that passphrase, law enforcement would then be able to see the IP addresses of peers as well as the content of the archive.
+Cryptography lets ordinary people safely talk and do business, even in the presence of adversaries. It's terrible for bad people on principle. EasySafe in particular is not a secure option for organized criminals or terrorist organizations, since all the security depends on a single unchangable passphrase. If any member of the group disclosed that passphrase, law enforcement would then be able to see the IP addresses of peers as well as the content of the archive. Although no one with any background in organized crime or terrorist activity was consulted in writing this model, it seems unlikely that this behavior is acceptable in that use case.
 
 It is also much harder to destroy the evidence of possessing an encrypted file. Encrypted data appears statistically random, and so a given encrypted file can be uniquely identified by just a few bytes taken from anywhere in the file. If someone tried to use EasySafe to conceal possession of unlawful material, they may actually be increasing their chances of conviction.
 
-Law enforcement and intelligence agencies also possess access to numerous side channel attacks, all of which are beyond the scope of EasySafe's security model.
+Law enforcement and intelligence agencies also possess access to numerous side channel attacks beyond the scope of EasySafe's security model.
