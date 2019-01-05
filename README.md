@@ -8,7 +8,7 @@ jonas@acrescrypto.com
 ###### Version
 Revision PRE-02, 2019-01-05
 
-This document is currently in an unstable draft status, and reflects pre-release software. 
+This document is currently in an unstable draft status, and reflects pre-release software. It is therefore subject to change.
 
 ###### Intellectual Property
 
@@ -931,16 +931,18 @@ As a design goal, the remaining Argon2 parameters were chosen so that a system i
 ### Proxy system
 A replicable system was defined to act as a proxy to the hypothetical 5th percentile computer running at 75% load. An appropriate number of iterations was then calculated through experimentation on this replicable system.
 
-According to the Steam Hardware and Software Survey of November 2018, over 95% of systems were reported as having at least 4GB of RAM and 2 CPUs. This is understood to mean 1GiB is available for Argon2 key derivations, as the system is assumed to be under 75% load.
+According to the Steam Hardware and Software Survey of November 2018, over 95% of systems were reported as having at least 4GB of RAM and 2 CPUs.
 
-As a proxy system, the Amazon EC2 t3.small instance was chosen. As a commercial virtual instance, it is highly standardized and easily available. The system has 2vCPU and 2GiB RAM, approximating the estimated specifications of the 5th percentile computer.
+As the system is assumed to be under 75% load, the Argon2 memory requirement is chosen to be 1GiB based on these figures. The parallelism is set to 16, as an intuitive balance between the number of CPU cores in a typical home computer, and the number likely to be seen in the near future.
+
+The Amazon EC2 t3.small instance was chosen as a suitable proxy system. As a commercial virtual machine, it is highly standardized and easily available as of this writing. The system has 2vCPU and 2GiB RAM, approximating the estimated specifications of the 5th percentile computer.
 
 ### Experiment
-The proxy system instance was created with a fresh installation of Ubuntu 18.04[1] in the us-east-1d availability zone. The T3 Unlimited option was enabled. The system reported its CPU type in `/proc/cpuinfo` to be `Intel(R) Xeon(R) CPU E5-2676 v3 @ 2.40GHz`. The `build-essential` package was installed, and Argon2 was then downloaded, compiled and run from its reference implementation[2], and executed with 16 threads of parallelism and 1GiB of RAM utilization. The salt and passphrase were chosen to be representative of what is expected for ordinary use of EasySafe.
+The proxy system instance was created with a fresh installation of Ubuntu 18.04[1] in the us-east-1d availability zone. The T3 Unlimited option was enabled. The system reported its CPU type in `/proc/cpuinfo` to be `Intel(R) Xeon(R) Platinum 8175M CPU @ 2.50GHz`. The `build-essential` package was installed, and Argon2 was then downloaded, compiled[2] and run from its reference implementation[3], and executed with 16 threads of parallelism and 1GiB of RAM utilization. The salt and passphrase were chosen to be representative of what is expected for ordinary use of EasySafe.
 
 This was repeated at various iteration counts until a count that consistently completed in an average of approximately 15 seconds was identified. The target time of 15 seconds was chosen under the assumption that it is a useful proxy for a target time of 60 seconds on a system under 75% CPU load.
 
-The following command, specifying 40 iterations, was found to have an average completion time of 14.967 seconds, with a standard deviation of 82.37ms (n=100):
+The following command, specifying 40 iterations, was found to have an average completion time of 14.967 seconds[4], with a standard deviation of 82.37ms (n=100):
 
 ```
 echo -n "landmark maggot errant ranking renewal going" | \
@@ -950,7 +952,9 @@ echo -n "landmark maggot errant ranking renewal going" | \
 Thus, an iteration count of 40 was selected for the Argon2 parameters of EasySafe.
 
 \[1]: Ubuntu 18.04 was installed from the `ami-0ac019f4fcb7cb7e6` image.
-\[2]: Obtained from https://github.com/P-H-C/phc-winner-argon2. Commit 6c8653c was used, as it was the latest commit to the 'master' branch at the time of evaluation.
+\[2]: The gcc 7.3.0-27ubuntu1~18.04 x86_64-linux-gnu compiler was used with Ubuntu GLIBC 2.27-3ubuntu1
+\[3]: Obtained from https://github.com/P-H-C/phc-winner-argon2. Commit 6c8653c was used, as it was the latest commit to the 'master' branch at the time of evaluation.
+\[4]: When replicating the experiment, the first Argon2 run on a fresh VM was observed to be above 16 seconds. The first run is excluded from the average as an outlier skewed by the need to initialize caches.
 
 
 ### Cost analysis
@@ -1012,9 +1016,11 @@ If each row of the table had a 256-bit identifier based on the passphrase, and t
 ##### Overestimate of adversary capabilities
 The above model is presented to provide an estimate for the minimum duration EasySafe can resist brute force attacks against the passphrase. The model assumes an exponential reduction of cost by 50% every 18 months, which may not be sustainable due to limitations imposed by, among other things, the laws of thermodynamics.
 
-Bruce Schneier points out in Applied Cryptography that if the energy of a typical supernova could be dedicated to computation in an idealized system operating with maximum theoretical efficiency at the average temperature of the universe, then that system could count to approximately 2^219. This is several hundred billion times less expensive than counting to 2^256. This does not account for any of the energy needed to perform any calculations with this counter.
+In ideal conditions, a perfectly-efficient computer powered with the total energy output of a typical supernova could count to 2^219.[1] This is several hundred billion times less expensive than counting to 2^256. This does not account for any of the energy needed to perform any calculations with this counter, such as Argon2 key derivations.
 
-The prediction that the adversary will have access to billions of supernovas worth of energy for the present-day value of $0.001 suggests that the model strongly overestimates the adversary's capabilities. Therefore, the actual life expectancy of a passphrase may be much greater than what is predicted in this section.
+The prediction that the adversary will have access to billions of supernovas worth of energy for the present-day value of $0.001 suggests that the model strongly overestimates the adversary's capabilities. Therefore, the actual lifespan of the confidentiality provided by a passphrase is likely to be greater than what is predicted in this section.
+
+[1] Schneier, Bruce. (1996). Applied Cryptography, Second Edition. Page 158.
 
 ##### Inadequacy of ordinary passphrases
 Weak passphrase selection is an ongoing problem in information security. Even given a key derivation function that is extremely expensive by current standards, the most commonly-used passwords are economical to attack even today. Users must select passphrases much stronger than what is typically selected today for EasySafe to provide a reasonable assurance of confidentiality.
