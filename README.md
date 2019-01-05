@@ -6,25 +6,22 @@ Jonas Acres
 jonas@acrescrypto.com
 
 ###### Version
-Revision PRE-01, 2019-01-01
+Revision PRE-02, 2019-01-05
 
 ###### Intellectual Property
 
-(blah blah creative commons thing goes here ultimately. for now, PLEASE DO NOT REDISTRIBUTE!)
+This work is licensed under a Creative Commons Attribution 4.0 International License. 
+(License: https://creativecommons.org/licenses/by/4.0/)
 
 The author is not aware of any patents encumbering the methods described in this document.
 
 ## Purpose
 
-This document explains the cryptography used in EasySafe.
+EasySafe is a distributed, encrypted filesystem. The filesystem can be read and written to based on knowledge of a passphrase. Peers hosting the filesystem can also be located on a decentralized network using the passphrase.
 
-EasySafe is a virtual distributed filesystem. Filesystem data is encrypted at rest, and peers locate one another and share information through a decentralized system with no locus of control. Knowledge of a passphrase is necessary and sufficient to identify an archive, locate a peer swarm, read and write to the filesystem in the default configuration.
+This document explains the cryptography used to encrypt files, locate peers and communicate with them.
 
 ## Conventions
-
-### Terminology
-
-* **Archive:** A read-write filesystem identified by a passphrase.
 
 ### Concatenation operator
 
@@ -49,7 +46,7 @@ x = "abc"    // |x| = 3
 
 ### Standard crypto functions
 
-A number of cryptographic primitives are used here. The name by which they appear in this document, as well as the specific algorithms chosen, are listed here.
+The cryptographic functions used in EasySafe:
 
 | Name | Algorithm | Length (bits) |
 |------|--------------------|--------------|
@@ -60,13 +57,14 @@ A number of cryptographic primitives are used here. The name by which they appea
 | SymmetricEncrypt(key, iv, plaintext) | ChaCha20 | 256 key / 96 nonce
 | SymmetricEncryptAEAD(key, iv, plaintext) | ChaCha20-Poly1305 | 256 key / 96 nonce / 128 tag
 | AsymmetricSharedSecret(privateKey, publicKey) | X25519 | 256
-| AsymmetricSign(privateKey, data) | Ed25519 | 256
+| AsymmetricSign(privateKey, data) | Ed25519 | 512
 | AsymmetricVerify(publicKey, signature, data) | Ed25519 | 256
-| PBKDF(passphrase) | Argon2\[1] | 256
-
-\[1] See additional Argon2 settings.
+| AsymmetricDerivePublic(privateKey) | Ed25519 | 256
+| PBKDF(passphrase) | Argon2 | 256
 
 #### Argon2 settings
+
+The parameters chosen for all Argon2 operations are as follows:
 
 | Argon2 Setting | Value                  |
 |----------------|------------------------|
@@ -79,6 +77,8 @@ A number of cryptographic primitives are used here. The name by which they appea
 | version        | 13                     |
 
 ## Basic constants
+The following constants will be referred to by name throughout the document:
+
 | Constant name    | Value | Unit | Description
 |------------------|-------|------|----|
 | HASH_LEN         | 64              | bytes | Output length of Hash() function
@@ -87,12 +87,12 @@ A number of cryptographic primitives are used here. The name by which they appea
 | SYM_AEAD_IV_LEN  | 16              | bytes | Symmetric initialization vector size in authenticated mode
 | SYM_AEAD_TAG_LEN | 16              | bytes | Tag size for symmetric encryption in authenticated mode
 | ASYM_SIG_LEN     | 64              | bytes | Output length of AsymmetricSign() function
-| PAGE_SIZE        | 65536 (default) | bytes | Configurable fixed page size for archive.
+| PAGE_SIZE        | 65536 (default) | bytes | Configurable fixed page size for filesystem.
 
 
-## Non-standard functions
+## Additional functions
 
-Certain non-primitive or non-standard operations are performed throughout this document. They are defined here.
+The following functions are referred to in this document. Their function is expressed here in pseudocode:
 
 ```
 ASSERT(booleanValue)
@@ -131,8 +131,8 @@ unpad(data):
 ```
 
 ```
-deriveSubkey(parentKey, type, index, tweak):
-  return HKDF(ikm=parentKey, length=SYM_KEY_LEN, salt=tweak || type(16) || index(16), info="zksync-subkey");
+deriveSubkey(parentKey, name, salt):
+  return HKDF(ikm=parentKey, length=SYM_KEY_LEN, salt=name || salt, info="easysafe-subkey");
 ```
 
 ```
@@ -163,149 +163,200 @@ taggedDecrypt(symRootKey, authKey, signPrivateKey, tag, signedCiphertext):
   return unpad(paddedPlaintext)
 ```
 
-# Archive definition
-An EasySafe filesystem is referred to as an "archive." The structure of an archive is described in this section. Details for constructing elements of the archive are described in the remainder of this document.
+# Filesystem
 
-## Configuration
-Each archive has a configuration, containing the following data:
+## Key derivations
+Every EasySafe filesystem is defined by a read passphrase and a write passphrase. By default, these passphrases are identical, but this may be overridden by the user.
 
-| Field name | Size (bytes) | Description | Default value
-|------------|-------------|-------------|----------|
-| PageSize   | 8           | Fixed length of config, page and page tree chunk files | 65536
-| Description | Variable   | User-specified string providing immutable description of archive | zero(0)
-| ArchiveRoot | `SYM_KEY_LEN`         | Symmetric key used to derive all other symmetric keys for content encryption | PassphraseRoot
-| WritePubKey | `ASYM_PUBKEY_LEN` | Asymmetric public key used to verify authenticity of archive content | See section XXX TODO
+```
+ReadPassphrase // given by user
+WritePassphrase // given by user; defaults to ReadPassphrase
 
-A "default archive" is one in which all fields contain their default values. Thus, a default archive's configuration can be deterministically generated from its passphrase root.
+RootKey = PBKDF(ReadPassphrase)
+WritePrivateKey = PBKDF(WritePassphrase)
+WritePublicKey = AsymmetricDerivePublic(WritePrivateKey)
+SeedKey = deriveSubkey(parentKey=RootKey, name="SeedKey", salt=zeros(0))
+```
+
+Possession of these keys acts as authorization for various tasks.
+
+| Key | Possessor can... |
+|-----|-----|
+| WritePublicKey | ...verify data belongs to filesystem |
+| SeedKey | ...participate in p2p network for filesystem
+| RootKey | ...read filesystem contents |
+| WritePrivateKey | ...add to filesystem |
+
+It is presumed that a user given the `WritePrivateKey` also has knowledge of the `RootKey`. The converse is not true. A user given the `RootKey` is not presumed to have knowledge of the `WritePrivateKey`, unless the read and write passphrases are identical.
+
+#### FS Key
+Every EasySafe filesystem has an additional 256-bit key referred to as the `FSKey`. This key is stored in the configuration file, encrypted using the `RootKey`. By default, the `FSKey` is equal to the `RootKey`. In non-default filesystems (explained below), the `FSKey` is randomly generated.
+
+### Seed-only peers
+A peer possessing knowledge of the `SeedKey`, but not the `RootKey`, `FSKey` or `WritePrivateKey`, is referred to as a "seed-only peer." These peers are able to participate in the peer-to-peer network to send and receive encrypted data, and possess sufficient information to authenticate that date. However, these peers are unable to read the contents of the encrypted filesystem.
 
 ## Configuration file
-An archive's configuration data is written in an archive config file. This file is structured as follows:
+### Default filesystems
+Each filesystem has a configuration file containing various parameters. For instance, the write passphrase can optionally be chosen independently of the read passphrase. There are default values for each configuration parameter. When the defaults are chosen for all parameters, the configuration file is deterministic from the passphrase. Such a filesystem is referred to as a "default filesystem." These filesystems can be located in the decentralized network solely with knowledge of their passphrase.
+
+### Configuration layout
+
+The configuration file is laid out as follows:
+
+|         |
+|---------|
+| Version hash |
+| Salt         |
+| Seed ciphertext |
+| Secure ciphertext |
+| Padding |
+| Signature |
+
+#### Version hash
+
+The version hash is produced as follows:
 
 ```
-Config file diagram
-
-+ Config (PageSize)
-    | version hash       (16)
-    | salt               (32)
-    + seed fixed         (4)
-      | seed_len           (4)
-    + seed variable      (6 + variable...)
-      | recordCount        (2)
-      + records            (4 + variable...)
-        | flags              (2)
-        | version            (1)
-        | nameLen            (1)
-        | name               (variable)
-        | payloadLen         (2)
-        | payload            (variable...)
-    + secure fixed       (4)
-      | secure_len         (4)
-    + secure variable    (6 + variable...)
-      | recordCount        (2)
-      + records            (4 + variable...)
-        | flags              (2)
-        | version            (1)
-        | nameLen            (1)
-        | name               (variable...)
-        | payloadLen         (2)
-        | payload            (variable...)
-    | padding...         (fill empty space to PageSize)
-    | signature          (ASYM_SIG_SIZE)
-
-flags:
-  0x01 MANDATORY: if set, and client does not support record type, then client MUST refuse to process archive or participate in swarm.
-
-records:
-  secure-config:
-    archive root
-    description
-  seed-config:
-    write public key
-  expiration:
-    deadline (once elapsed, client must stop sharing)
-    destroy (if set, client must also delete data)
-  killphrase:
-    hash (when revtag preimage to hash received, client must stop sharing)
-    destroy (if set, client must also delete data)
-    relay (if set, client should remain on swarm, only announcing killphrase revtag for state period of time after receipt)
+VersionHash = HMAC(key=SeedRoot, data="easysafe-version:0")
 ```
 
+#### Salt
 
+The salt is generated using an authenticated hash of the following:
+
+| SaltInput |
+|-|
+| Seed Section Plaintext Length (16 bits) |
+| Seed Section Plaintext |
+| Secure Section Plaintext Length (16 bits) |
+| Secure Section Plaintext |
+
+This information is then authenticated to produce the salt:
+```
+Salt = HMAC(key=SeedKey, data=SaltInput)
+```
+
+#### Seed ciphertext
+The plaintext structure of the seed section is beyond the scope of this document. It includes `PAGE_SIZE` and `WritePublicKey`, as well as any other filesystem parameters that must be known to parties possessing the `SeedKey`.
+
+The seed ciphertext key is derived as follows:
 
 ```
-seedAuthKey = deriveSubkey(root=SeedKey, type=AUTH, name="easysafe-config-seed-auth")
-
-version = HKDF(ikm=zeros(2), len=16, salt=seedAuthKey, info="easysafe-version")
-
-securePayload = ArchiveRoot || |Description|(16) || Description
-securePlaintext = 1(16) || 0(16) || 0(8) || 13(8) || "secure-config" || |securePayload|(16) || securePayload
-
-seedPayload = WritePubKey || PageSize(64)
-securePlaintext = 1(16) || 0(16) || 0(8) || 11(8) || "seed-config" || |seedPayload|(16) || seedPayload
-
-saltMaterial = |seedPlaintext|(16) || seedPlaintext || |securePlaintext|(16) || securePlaintext
-secureSalt = HKDF(ikm=saltMaterial,
-  length=32,
-  salt=secureRootKey,
-  info="easysafe-config-secure-salt")
-
-seedTextTweak = hash(version || secureSalt)
-seedTextKey = deriveSubkey(root=SeedKey,
-  type=CIPHER,
-  name="easysafe-config-seed-text:" || secureTextTweak)
-seedCiphertext = SymmetricEncrypt(key=seedTextKey,
-  iv=nonce(1),
-  data=seedPlaintext)
-seedFixed = SymmetricEncrypt(key=seedTextKey,
-  iv=nonce(0),
-  data=|seedCiphertext|(32)
-
-secureTextTweak = hash(version || secureSalt || seedFixed || seedCiphertext)
-secureTextKey = deriveSubkey(root=PassphraseKey,
-  type=CIPHER,
-  name="easysafe-config-secure-text:" || secureTextTweak)
-secureCiphertext = SymmetricEncrypt(key=secureTextKey,
-  iv=nonce(1),
-  data=securePlaintext)
-secureFixed = SymmetricEncrypt(key=secureTextKey,
-  iv=nonce(0),
-  data=|secureCiphertext|(32))
-
-unpadded = version || secureSalt || seedFixed || seedCiphertext || secureFixed || secureCiphertext
-padKey = deriveSubkey(root=PassphraseRoot,
-  type=AUTH,
-  name="easysafe-config-padding")
-padding = HKDF(ikm=padKey,
-  length=PageSize - |unpadded| - ASYM_SIG_LEN,
-  salt=unpadded,
-  info="easysafe-config-padding")
-
-unsigned = unpadded || padding
-signature = AsymmetricSign(key=WritePrivKey, data=unsigned)
-
-configFileBytes = unsigned || signature
-
-prefix = HKDF(ikm=configFileBytes, length=HASH_LEN-16-SYM_TAG_LEN, salt=SeedRoot, info="easysafe-config-id-tag")
-data = "easysafe" || PageSize(64)
-dataKey = deriveSubkey(root=SeedRoot, type=CIPHER, name="easysafe-config-id-data:" || prefix)
-pageSizeCiphertext = SymmetricEncryptAEAD(key=dataKey, iv=zeros(SYM_IV_LEN), plaintext=data)
-
-archiveId = prefix || pageSizeCiphertext
-
-tag = HMAC(key=seedAuthKey, data=archiveId)
-
-// Content of configFile = configFileBytes
-// tag is used as filename
+SeedCiphertextKey = deriveSubey(parentKey=SeedKey, name="SeedCiphertextKey", salt=VersionHash || Salt)
 ```
+
+The key is then used to produce the secure ciphertext:
+
+```
+SeedCiphertext = SymmetricEncrypt(key=SeedCiphertextKey, nonce=zeros(SYM_IV_LEN), data=SeedPlaintext)
+```
+
+#### Secure ciphertext
+The plaintext structure of the secure section is beyond the scope of this document. The secure section includes the `FSKey`, and any filesystem parameters that should be known only to holders of the read passphrase. The secure ciphertext key is derived as follows:
+
+```
+SecureCiphertextKey = deriveSubey(parentKey=RootKey, name="SecureCiphertextKey", salt=VersionHash || Salt || SeedCiphertext)
+```
+
+The key is then used to produce the secure ciphertext:
+
+```
+SecureCiphertext = SymmetricEncrypt(key=SecureCiphertextKey, nonce=zeros(SYM_IV_LEN), data=SecurePlaintext)
+```
+
+#### Padding
+
+The padding section ensures that the overall length of the configuration file is equal to `PAGE_SIZE + ASYM_SIG_LEN`. Thus, it has a length of:
+
+```
+PaddingLen = PAGE_SIZE + ASYM_SIG_LEN - |VersionHash| - |Salt| - |SeedCiphertext| - |SecureCiphertext|
+```
+
+The padding may take any value, subject to the requirement that it appear statistically indistinguishable from random to a party that does not have knowledge of the read passphrase. By default, the padding is constructed deterministically as follows:
+
+```
+paddingKey = deriveSubkey(parentKey=RootKey, name="PaddingKey", salt=VersionHash || Salt || SeedCiphertext || SecureCiphertext)
+Padding = SymmetricEncrypt(key=paddingKey, nonce=zeros(SYM_IV_LEN), data=zeros(PaddingLen))
+```
+
+#### Signature
+A public key signature is calculated over the preceding sections using the `WritePrivateKey` as follows:
+
+```
+unsignedFile = VersionHash || Salt || SeedCiphertext || SecureCiphertext || Padding
+Signature = AsymmetricSign(key=WritePrivateKey, data=unsignedFile)
+```
+
+#### Assembled configuration file
+The above sections are concatenated together to form the completed configuration file:
+
+```
+ConfigFile = VersionHash || Salt || SeedCiphertext || SecureCiphertext || Padding || Signature
+```
+
+### FSID
+A unique 512-bit identifier is formed from the configuration file. This identifier is called the `FSID`, and is used to distinguish one filesystem from another.
+
+The FSID is composed of two fields:
+
+| Field | Length |
+|-|-|
+| Prefix | 32 bytes
+| Suffix | 32 bytes |
+
+#### Prefix
+The prefix is calculated using the `SeedKey` and `ConfigFile` as follows:
+
+```
+Prefix = HMAC(key=SeedKey, data=ConfigFile)
+```
+
+#### Suffix
+The suffix is an authenticated ciphertext containing the `PAGE_SIZE`:
+
+```
+suffixData = PAGE_SIZE(64) || zeros(8) // 16 bytes
+suffixKey = deriveSubkey(parentKey=SeedKey, name="FSIDSuffixKey", salt=Prefix)
+suffix = SymmetricEncryptAEAD(key=suffixKey, nonce=zeros(SYM_IV_LEN), data=suffixData)
+```
+
+Including the resulting AEAD tag, the suffix is 32 bytes in length.
+
+#### Assembled FSID
+The FSID is the concatenation of the prefix and suffix:
+
+```
+FSID = prefix || suffix
+```
+
+#### Configuration file path
+The path used for the configuration file in storage is derived from the FSID.
+
+```
+pathHash = HMAC(key=SeedKey, data=FSID)
+ConfigPath = hashpath(pathHash)
+```
+
+The configuration file is written to the path specified by `ConfigPath`.
 
 ## File storage
 
 ### Inode table
-Every file in an archive is indexed within an inode. The inode contains basic information beyond the scope of this document, similar to that described in a POSIX `stat_t` structure. Additionally, the inode contains a 64-bit randomly-generated `inodeIdentity` field which is constant for the life of the file, and a RefTag.
+Every file in an filesystem is indexed within an inode. The inode contains basic information beyond the scope of this document, similar to that described in a POSIX `stat_t` structure. Additionally, the inode contains a 64-bit randomly-generated `distinguisher` field which is constant for the life of the file, and a RefTag.
+
+Inode contents include:
+
+| Field | Description |
+|-------|-------------|
+| stat  | POSIX `stat_t`-like data structure containing file metadata
+| distinguisher | Random 64-bit integer; constant for lifetime of file
+| reftag | RefTag object, described below. Allows retrieval of file.
+
+The inode table is stored in the same manner as any other file in the filesystem, described below. The inode table has a fixed `distinguisher` of zero. The `reftag` of the inode table is expressed as a `RevisionTag`, described below.
 
 ### RefTags
 
-A RefTag is an identifier allowing retrieval of a file from an archive. It is structured as follows:
+A RefTag is an identifier allowing retrieval of a file from a filesystem. It is structured as follows:
 
 | Field | Size | Description
 |-------|--------|----|
@@ -325,160 +376,328 @@ The `refType` field takes on values from the following table:
 The "Page" and "Page Tree" structures are described below.
 
 ### Pages
-Files are divded into individual pages of fixed length for storage. The plaintext content of each page has length `PageSize + 4`, and is padded as needed to reach this amount. The plaintext of each page is calculated as follows:
+#### Plaintext structure
+Files are divded into individual pages of fixed length for storage. The plaintext of each page is structured as follows:
+
+| Field | Length (bytes)
+|---------|---|
+| length | 4 | Length of data in page
+| data | length | Plaintext from file
+| padding | PAGE_SIZE - length | Null padding to read fixed length
+
+The `length` field is `PAGE_SIZE` or the number of bytes in the final page of the file, whichever is lesser.
+
+#### Ciphertext
+The plaintext is encrypted, resulting in a ciphertext and page tag.
 
 ```
-getPageText(filePlaintext, pageNum):
-  endOffset = Min((pageNum+1)*PageLen, |filePlaintext|)
-  return pad(filePlaintext[pageNum*PageLen ... endOffset], PageLen)
+FSID // From filesystem
+Distinguisher // From inode
+PageNum // Index of page into file
+PagePlaintext // Constructed per table above
+
+pageKey = deriveSubkey(parentKey=FSKey, name="Page", salt=FSID || Distinguisher(64) || PageNum(16))
+PageTag, PageCiphertext = taggedEncrypt(symKey=pageKey, authKey=SeedRoot, signPrivateKey=WritePrivateKey, plaintext=PagePlaintext)
 ```
 
-Pages are encrypted and stored to disk:
+#### Storage
+The page is stored at a location determined by its tag.
 
 ```
-// inodeIdentity from file's inode entry
-// pageText from getPageText
-storePage(inodeIdentity, pageNum, pageText):
-  tweak = inodeIdentity(64) || pageNum(64)
-  pageSymKey = deriveSubkey(rootKey=ArchiveRoot, type=CIPHER, name="page:" || tweak)
-  pageAuthKey = deriveSubkey(rootKey=SeedRoot, type=AUTH, name="page:" || tweak)
-  tag, ciphertext = taggedEncrypt(symKey=pageSymKey, authKey=symAuthKey, signPrivateKey=WritePrivateKey, plaintext=pageText)
-  writeTaggedFile(tag, ciphertext)
-  return tag
+PagePath = hashpath(PageTag)
 ```
 
-If a file consists of exactly one page, then the resulting tag of that page is used to create the RefTag stored in the file's inode, with type `REF_TYPE_INDIRECT`.
+#### RefTag calculation
+
+If a file consists of exactly one page, then the resulting tag of that page is used to create the RefTag stored in the file's inode, with type `REF_TYPE_INDIRECT`. Otherwise, the page tag is stored inside of a page tree, defined below.
 
 ### Page trees
-Individual pages can only be read if their page tag is known. When a file consists of only a single tag, the tag is stored directly in the inode table for the file. For files containing multiple tags, the tags are stored in a B-tree structure known as a "page tree". Each node of the page tree is known as a "page tree chunk." Leaf page tree chunk contains a list of page tags. Branch page tree chunks contain the tags of child page tree chunks.
+Individual pages can only be read if their page tag is known. When a file consists of only a single tag, the tag is stored directly in the inode table for the file. For files containing multiple tags, the tags are stored in a B-tree structure known as a "page tree". Each node of the page tree is known as a "page tree chunk."
 
-Page tree chunks are encrypted and stored as follows:
+#### Page tree chunk plaintext
+
+Each chunk is a list of tags. For branch nodes, these tags reflect the tags of the node's children. For leaf nodes, these tags reflect page tags belonging to the file.
+
+| Chunk |
+|---|
+| tag0 |
+| tag1 |
+| ... |
+
+The chunk plaintext is padded so that its total length is `PAGE_SIZE`.
+
+#### Page tree chunk ciphertext
 
 ```
-// inodeIdentity from file's inode entry
-// chunkNum is index of chunk within tree
-// chunkText = (tag0 || tag1 || ... || tagN), serialization of all tags in chunk
-storeChunk(inodeIdentity, chunkNum, chunkText):
-  tweak = inodeIdentity(64) || chunkNum(64)
-  chunkSymKey = deriveSubkey(rootKey=ArchiveRoot, type=CIPHER, name="chunk:" || tweak)
-  chunkAuthKey = deriveSubkey(rootKey=SeedRoot, type=AUTH, name="chunk:" || tweak)
-  tag, ciphertext = taggedEncrypt(symKey=chunkSymKey, authKey=chunkAuthKey, signPrivateKey=WritePrivateKey, plaintext=chunkText)
-  writeTaggedFile(tag, ciphertext)
-  return tag
+FSID // From filesystem
+Distinguisher // From inode
+ChunkNum // Index of chunk in tree
+ChunkPlaintext // Constructed per table above
+
+chunkKey = deriveSubkey(parentKey=FSKey, name="Chunk", salt=FSID || Distinguisher(64) || ChunkNum(16))
+chunkTag, PageCiphertext = taggedEncrypt(symKey=chunkKey, authKey=SeedRoot, signPrivateKey=WritePrivateKey, plaintext=ChunkPlaintext)
 ```
 
-The tag of the root chunk (`chunkNum` == 0) is used to create the RefTag stored in the file's inode, with type `REF_TYPE_2INDIRECT`.
+#### Storage
+The chunk is stored at a location determined by its tag.
 
-### Inode table serialization
+```
+ChunkPath = hashpath(ChunkTag)
+```
 
-The inode table itself is serialized as a file, using the same paging methodology described above. The `inodeIdentity` of the inode table is always set to 0. Because the inode table cannot store its own RefTag, the resulting RefTag (regardless of its refType) is used to create a RevisionTag.
+#### RefTag calculation
+When page trees are used, the file reftag is constructed with type `REF_TYPE_2INDIRECT` using the tag of the root chunk (that is, the chunk with index 0).
 
 ### RevisionTags
 
-A RevisionTag provides an entry point into the filesystem, similar to a git commit hash.
+A RevisionTag provides an entry point into the filesystem, similar to a git commit hash. A RevisionTag is not a hash, and contains readable information. To prevent seed-only peers from learning information about the structure of the filesystem by observing RevisionTags, the content of the RevisionTag is obfuscated.
+
+#### Plaintext
+
+The plaintext of the RevisionTag contains the following fields:
+
+| Field | Length (bytes) | Description |
+|-------|----------------|-------------|
+| refTag | HASH_LEN + 12 | RefTag produced by inode table |
+| parentTag | 8 | First 8 bytes of RevisionTag of parent[1]
+| height | 64 | 1 + height of parent |
+
+[1] If a revision has multiple parents, the parentTag is calculated by hashing the concationation of the parent revtags in sorted order. If a revision has no parents, the blank RevisionTag is used.
+
+[2] If a revision has multiple parents, the greatest parent height is used. If a revision has no parents, the height is set to 1.
+
+#### Obfuscator
+
+An obfuscator is derived from the plaintext as follows:
 
 ```
-// parentRevisionTag is revision tag of previous version of inode table, or zeros if this is the first revision
-// height is 1 + (height of the previous revision), or 0 if this is the first revision
-createRevisionTag(refTag, parentRevisionTag, height):
-  plaintext = refTag || parentRevisionTag[0 ... 8] || height(64)
-  obfuscator = HKDF(ikm=plaintext, length=16, salt=ArchiveRoot, info="revision-tag-obfuscator")
-  revTagKey = HKDF(ikm=obfuscator, length=SYM_KEY_LEN, salt=ArchiveRoot, info="revision-tag-key")
-  
-  ciphertext = SymmetricEncrypt(key=revTagKey, iv=zeros(SYM_IV_LEN), data=plaintext)
-  obfuscated = obfuscator || ciphertext
-  signature = AsymmetricSign(key=writeKey, data=obfuscated)
-
-  return obfuscated || signature
+Obfuscator = HKDF(ikm=plaintext, length=16, salt=FSKey, info="revision-tag-obfuscator")
 ```
 
-An obfuscator is derived deterministically from the plaintext to ensure that a given RefTag always produces the same RevisionTag. The obfuscator is again combined with the archive root via HKDF to ensure that only peers possessing knowledge of the archive root can decipher the RefTag. A signature is applied to allow seed-only peers to verify that a given RevisionTag is authorized by a party with knowledge of the write key prior to relaying the RevisionTag to other peers.
+The obfuscator derives an obfuscation key:
 
-There is a tradeoff between the length of the obfuscator (and therefore efficiency of representation), and the probability of two RevisionTags producing identical obfuscators. With a 128-bit obfuscator, this happens on average once per 2^64 RevisionTags. The confidentiality of these RevisionTags will then be lost. The presumption that an adversary is able to do this for all revisions is modeled as the InodeTableOracle in the basic threat model.
+```
+ObfuscationKey = deriveSubkey(parentKey=FSKey, name="obfuscation-key", salt=Obfuscator)
+```
+
+##### Obfuscator collisions
+The obfuscator is derived deterministically from the plaintext to ensure that a given RefTag always produces the same RevisionTag. The obfuscator is again combined with the `FSKey` to ensure that only peers possessing knowledge of the `FSKey` can decipher the RefTag.
+
+There is a tradeoff between the length of the obfuscator (and therefore efficiency of representation), and the probability of two RevisionTags producing identical obfuscators. With a 128-bit obfuscator, this happens on average once per 2^64 RevisionTags. When RevisionTags share a common obfuscator, their confidentiality is lost. This will allow the adversary to learn the refTag, parentTag and height. In turn, this provides the adversary with at least one page file whose `Distinguisher` field is known, simplifying brute force attacks against the `FSKey`. This capability is modeled as the `InodeTableOracle` in the threat model later in this document.
+
+If a filesystem produces a new revision every nanosecond, it will take an average of over 584 years to produce such a collision. This is deemed acceptable for most use cases. Nevertheless, the complexity is low enough that this operation is referred to as "obfuscation" rather than "encryption."
+
+#### Ciphertext
+The obfuscation key is used to encrypt the plaintext:
+
+```
+RevTagPlaintext // constructed according to table above
+RevisionTagCiphertext = SymmetricEncrypt(key=ObfuscationKey, iv=zeros(SYM_IV_LEN), data=RevTagPlaintext)
+```
+
+#### Signature
+The resulting ciphertext is then signed using the `WritePrivateKey`. This is done to allow seed-only peers to authenticate RevisionTags without knowledge of the `FSKey`.
+
+```
+RevisionTagSignature = AsymmetricSign(key=WritePrivateKey, data=RevisionTagCiphertext)
+```
+
+#### Assembled RevisionTag
+The obfuscator, ciphertext and signature are combined to produce the RevisionTag:
+
+```
+RevisionTag = obfuscator || ciphertext || signature
+```
+
+#### Revision tag distribution
+RevisionTags are stored locally as entry points into the filesystem. Additionally, each filesystem revision contains a special file referred to as the "Revision Info" which contains a list of the RefTags of each parent revision.
+
+RevisionTags are shared on the peer-to-peer network, including to seed-only peers.
 
 ## Distributed Hash Table
 
-EasySafe allows archive peers to discover one another by means of a distributed hash table (DHT). This DHT allows peers with knowledge of an archive ID and seed key to discover "advertisements" listing connection information for other peers possessing the same information.
+EasySafe allows filesystem peers to discover one another by means of a distributed hash table (DHT). This DHT allows peers with knowledge of seed key to discover "advertisements" listing FSIDs and connection information (such as IP address and port number) for peers sharing filesystems matching that seed key.
 
 ### DHT protocol
-The particulars of the DHT protocol are provided in a separate document, entitled "EasySafe Network Specification." Discussion in the present document is limited to the cryptographic aspects of this protocol. The function of the DHT is summarized by the following functions:
+The particulars of the DHT protocol are provided in a separate document, entitled "EasySafe Network Specification." Discussion in the present document is limited to the cryptographic aspects of this protocol.
+
+As a simplification, the DHT can be understood as a service providing the following functions:
 
 | Function | Result | Description
 |----------|--------|-------------
 | DHTLookup(temporalSeedId) | Zero or more Advertisements | Locate Advertisements for connectable peers sharing a given seed ID
 | DHTSet(peer, temporalSeedId, ad) | None | Request a remote peer to store an advertisement for a given seed ID
 
-### Message-level cryptography
-Each DHT peer has a static X25519 keypair used to encrypt messages. Message plaintexts are encrypted using key material derived from the shared secret produced by the static keys of the two parties. Because these keys are static, a compromise of a peer's private key allows an adversary retroactive decryption of any previous messages sent during the lifespan of that key.
-
-Messages are encrypted and serialized as follows:
-```
-// NetworkID is a fixed constant, specific to the DHT
-// 'plaintext' is the raw plaintext of a DHT protocol message
-// remotePubKey is the X25519 static public key of the receiving peer
-// localPubKey is the X25519 static public key of the local peer
-// localPrivKey is the X25519 static private key of the local peer
-
-randomBytes = RNG(16)
-obfKey = HKDF(ikm=remotePubKey, length=SYM_KEY_LEN, salt=NetworkID || randomBytes, info="easysafe-dht-obfkey")
-
-obfuscatedPubKey = SymmetricEncrypt(key=obfKey, iv=zeros(SYM_IV_LEN), plaintext=localPubKey)
-salt = networkId || randomBytes || obfuscatedPubKey
-dhSecret = DH(localPrivKey, remotePubKey)
-
-messageKey = HKDF(ikm=dhSecret, length=SYM_KEY_LEN, salt=salt, info="easysafe-dht-msgkey")
-ciphertext = SymmetricEncryptAEAD(key=messageKey, iv=zeros(SYM_IV_LEN), plaintext=plaintext)
-
-serialized = randomBytes || obfuscatedPubKey || ciphertext
-// 'serialized' is transmitted to remote peer
-```
-
 ### Temporal seed IDs
-The temporal seed ID is a time-dependent derivative of the seed root key, which is in turn derived from an archive's passphrase.
+The temporal seed ID is a time-dependent derivative of the `SeedKey`.
 
 ```
 // EpochSeconds = # seconds elapsed since 1970-01-01 00:00:00 UTC
 timeslice = floor(EpochSeconds / (60*60*3))
-temporalSeedId = deriveSubkey(rootKey=SeedKey, type=AUTH, name="temporal-seed-key:" || timeslice(64))
+temporalSeedId = deriveSubkey(rootKey=SeedKey, name="temporal-seed-key", salt=timeslice(64))
 ```
 
-#### Lookup tokens
-When performing the `DHTLookup` operation, each individual request contains a lookup token. This token is constructed as follows:
+The temporal seed IDs are designed to rotate every 3 hours. This is done so that Sybil attacks against an ID will require an ongoing investment of effort, and to limit the duration for which DHT peers can observe the number of lookups for a given ID.
+
+### Message-level cryptography
+Each DHT peer has a static X25519 keypair used to encrypt messages. Message plaintexts are encrypted using key material derived from the shared secret produced by the static keys of the two parties. Because these keys are static, a compromise of a peer's private key allows an adversary retroactive decryption of any previous messages sent during the lifespan of that key.
+
+Messages are encrypted and serialized as follows.
+
+#### Parameters
+
+The following variables are defined prior to encrypting the DHT message:
+```
+NetworkID // fixed constant, specific to the DHT
+PayloadPlaintext // raw plaintext of a DHT protocol message
+RemotePubKey // X25519 static public key of the receiving peer
+LocalPubKey // X25519 static public key of the local peer
+LocalPrivKey // X25519 static private key of the local peer
+```
+
+#### Per-message salt
+
+A 16-byte `MsgSalt` field is generated for each message. This salt must meet the following requirements:
+
+1. The (`RemotePubKey`, `LocalPubKey`, `MsgSalt`) tuple must be unique, with very high probability.
+2. `MsgSalt` must be indistinguishable from random to the casual observer.
+3. `MsgSalt` must not reveal any information about the payload of the message to a party that does not possess either `LocalPrivKey` or the private key corresponding to `RemotePubKey`.
+
+In the present implementation, `MsgSalt` is generated by a CSPRNG.
+
+#### Obfuscation key
+
+The `LocalPubKey` field is obfuscated using a key derived from `NetworkID`, `MsgSalt` and `RemotePubKey`. This is done to prevent a casual observer from distinguishing any part of the transmitted DHT message from random.
 
 ```
-// peerPublicKey is static X25519 key of remote peer
-lookupKey = deriveSubkey(rootKey=SeedRoot, type=AUTH, name="dht-lookup")
-lookupToken = HMAC(key=lookupKey, temporalSeedId || peerPublicKey)
+ObfKey = HKDF(ikm=RemotePubKey, length=SYM_KEY_LEN, salt=NetworkID || MsgSalt, info="easysafe-dht-obfkey")
 ```
 
-The same `lookupToken` is provided in requests made during the `DHTSet` operation. `DHTLookup` requests with advertisements that were listed with the same `lookupToken`.
+The key obfuscation is done by encrypting the `localPubKey` with the `ObfKey`:
+
+```
+ObfuscatedPubKey = SymmetricEncrypt(key=ObfKey, iv=zeros(SYM_IV_LEN), plaintext=LocalPubKey)
+```
+
+#### Message key
+The message key is derived from a combination of the shared secret derived by the Diffie-Hellman operation of the `LocalPrivKey` with the `RemotePubKey`, with various extra salting parameters.
+
+```
+extraSalt = NetworkId || LocalPubKey || RemotePubKey || MsgSalt || ObfuscatedPubKey
+dhSecret = DH(LocalPrivKey, RemotePubKey)
+MsgKey = HKDF(ikm=dhSecret, length=SYM_KEY_LEN, salt=extraSalt, info="easysafe-dht-msgkey")
+```
+
+#### Message ciphertext
+The DHT message payload is then encrypted using the derived `MsgKey`.
+
+```
+MsgCiphertext = SymmetricEncryptAEAD(key=messageKey, iv=zeros(SYM_IV_LEN), plaintext=plaintext)
+```
+
+#### Assembled message
+The `MsgSalt`, `ObfuscatedPubKey` and `MsgCiphertext` are combined to form the completed DHT message.
+
+```
+DhtMsg = MsgSalt || ObfuscatedPubKey || MsgCiphertext
+```
+
+The `DhtMsg` is then transmitted to the remote peer.
+
+### Lookup tokens
+When performing the `DHTLookup` operation, each individual request contains a lookup token specific to the remote peer. This token is constructed as follows:
+
+```
+NetworkID // fixed constant, specific to the DHT
+RemotePubKey // X25519 static public key of the receiving peer
+TemporalSeedId // Temporal seed ID used as argument to DHTLookup
+
+lookupKey = deriveSubkey(rootKey=SeedRoot, name="dht-lookup", salt=NetworkID)
+LookupToken = HMAC(key=lookupKey, TemporalSeedId || RemotePubKey)
+```
+
+Because the `LookupToken` depends on the remote peer's public key, the token is specific to each peer. When performing a `DHTSet` operation, requestors include the `LookupToken` for the remote peer with the advertisement to be stored. The `LookupToken` is also included in `DHTLookup` requests, and the remote peer will only respond with advertisements stored with the same token. This prevents a peer from performing `DHTLookup` operations on temporal seed IDs harvested from `DHTLookup` operations that the peer has received.
 
 ### Advertisement content
-Advertisements contain plaintext routing information, including IP address and TCP port number. Advertisements also contain an encrypted archive ID field, calculated as follows:
+Advertisements are structured as follows:
+
+| Advertisement |
+|-|
+| Public mutable section (unencrypted) |
+| Public immutable section (unencrypted) |
+| Private section (encrypted) |
+
+#### Public mutable section
+The public mutable section contains plaintext information that may be altered by the peer storing the advertisement. It contains:
+
+| Public mutable section |
+|-|
+| IP address (string)
+
+This section is mutable so that the storing peer can set the IP address to the observed IP address of the sender, as a means to overcome scenarios in network address translation where the sender may not know their own public IP address. The storing peer must also be able to ensure that the advertisement lists the sender's actual IP address, as a means of discouraging denial of service attacks.
+
+#### Public immutable section
+The public immutable section contains plaintext information that may not be altered by the peer storing the advertisement.
+
+| Public immutable section |
+|-|
+| AdSalt (64-bit) |
+
+##### Salt
+The `AdSalt` is a random 64-bit value. It must be unique to the advertisement. Storing peers reject any advertisement with a salt matching one that they already possess for a given `LookupToken`.
+
+#### Private section
+
+The private section is encrypted using a key derived from the `LookupToken`, `AdSalt` and `SeedKey`.
+
+| Private section plaintext |
+|---|
+| Port (16-bit)
+| FSID
+| Public static key
+
+Advertisements also contain an encrypted FSID field, calculated as follows:
+
+##### Key derivation
+
+The private section is encrypted with a key derived as follows:
 
 ```
-// peerPublicKey is static X25519 key of remote peer
-rng = RNG(SYM_IV_LEN)
-key = deriveKey(rootKey=SeedKey, type=CIPHER, name="dht-ad:" || lookupToken || rng)
-encryptedArchiveId = SymmetricEncryptAEAD(key=key, iv=zeros(SYM_IV_LEN), plaintext=ArchiveId)
+PrivateSectionKey = deriveKey(rootKey=SeedKey, name="dht-advertisement", salt=LookupToken || AdSalt)
+```
 
-// rng and encryptedArchiveId included in ad
+##### Ciphertext
+
+The private section ciphertext is produced by encrypting the plaintext with the `PrivateSectionKey`:
+
+```
+PrivateSectionPlaintext // constructed per table above
+
+PrivateSectionCiphertext = symmetricEncryptAEAD(key=PrivateSectionkey, nonce=zeros(SYM_IV_LEN), plaintext=PrivateSectionPlaintext)
+```
+
+#### Assembled advertisement
+
+The completed advertisement is assembled by concatenating the `PublicMutableSection`, `PublicImmutableSection` and `PrivateSection`:
+
+```
+AdText = PublicMutableSection || PublicImmutableSection || PrivateSection
 ```
 
 ## Swarming
-EasySafe peers participate in a peer-to-peer swarm to share archive data.
+EasySafe peers participate in a peer-to-peer swarm to share filesystem data.
 
 ### Swarming protocol
 As with the DHT protocol, the particulars of the swarming protocol are not considered in this document, beyond what is needed to exmaine its cryptographic aspects.
 
 ### Handshaking
 
-Handshaking and message encryption follow the standards of the Noise specification, as of Revision 34.[TODO cite] The protocol name is `Noise_XKpsk4+symobf_25519_ChaChaPoly_BLAKE2b`.
+Handshaking and message encryption follow the standards of the Noise specification, as of Revision 34.[TODO cite] The protocol name is `Noise_XKpsk4_25519_ChaChaPoly_BLAKE2b`.
 
 In Noise notation, the handshake pattern is expressed as follows:
 ```
-// PSK is archive ID
-// Server static key learned by client from DHT or other mechanism
+// PSK is FSID
+// Responder static key learned by initiator from DHT ad
 // | denotes message payload, which is to be encrypted per Noise specification
 XKpsk4:
   <- s
@@ -489,33 +708,26 @@ XKpsk4:
   <- psk   | additionalB
 ```
 
-##### symobf option
-The symmetric obfuscation option ("symobf") allows transmission of the initiator's public ephemeral key in a manner that is indistinguishable from random to a casual observer. This indistinguishibility depends on the observer lacking knowledge of the responder's public static key, which a determined adversary may possess.
+##### XKpsk4 designation
+The Noise specification does not contain a "XKpsk4" pattern. This key exchange follows the standard XKpsk3 pattern, with the exception that the psk is moved to a new fourth round.
 
-When transmitting and receiving public keys, the key material is processed through the following functions:
+This is because the responder may be listening for multiple filesystems using the same port and public static key. Since the FSID is used as a pre-shared key, the responder must receive information from the requestor in order to determine which FSID to use. The requestor cannot safely transmit this information until the payload of round 3 (the `additionalA` section, described below).
+
+In the standard "XKpsk3" pattern, the `psk` token would have been processed prior to encrypting `additionalA`, meaning the responder would be unable to determine which PSK to use. Therefore the `psk` token is delayed until the next round.
+
+##### Symmetric obfuscation of ephemeral public key
+During the handshake, the initiator's public ephemeral key is transmitted in the clear. Ed25519 public keys are distinguishable from random. To prevent a casual observer from distinguishing EasySafe traffic from random, the initiator's public ephemeral key is obfuscated using a key derived from the responder's public static key:
+
 ```
-deriveObfKey(random):
-  // ResponderPublicKey is known static key of peer in responder role
-  return HKDF(ikm=ResponderPublicKey, len=SYM_KEY_LEN, salt=random, info="easyshare-obf")
-
-obfuscate(pubKey):
-  if(HasKey()): // HasKey() function defined in Noise Specification, Section 5.1
-    return key
+  ResponderPublicStaticKey // public static key belonging to responder; known to requestor from ad
+  InitiatorPublicEphemeralKey // public ephemeral key belonging to initiator
+  
   random = RNG(32)
-  obfKey = deriveObfKey(random)
-  return random || SymmetricEncryptAEAD(key=obfKey, iv=zeros(SYM_IV_LEN), data=pubKey)
-
-deobfuscate(inputBuffer):
-  if(HasKey()):
-    return inputBuffer[0 ... ASYM_PUBKEY_LEN]
-  random = inputBuffer[0 ... 32]
-  pubKeyCiphertext = inputBuffer[32 ... 32 + ASYM_PUBKEY_LEN]
-  obfKey = deriveObfKey(random)
-  return SymmetricDecryptAEAD(key=obfKey, iv=zeros(SYM_IV_LEN), data=pubKeyCiphertext)
+  obfKey = deriveSubkey(parentKey=ResponderPublicStaticKey, name="handshake-ephemeral-key-obfuscation", salt=random)
+  ObfuscatedEphemeralKey = random || SymmetricEncryptAEAD(key=obfKey, iv=zeros(SYM_IV_LEN), data=InitiatorPublicEphemeralKey)
 ```
 
-##### psk4 designation
-The Noise specification does not contain a "XKpsk4" pattern. This key exchange follows the standard XKpsk3 pattern, with the exception that the psk is moved to a new fourth round. This allows the responder to determine which archive ID to use for the PSK based on the initiator's request.
+The `ObfuscatedEphemeralKey` is what is transmitted when processing the `e` token of round 1 of the Noise handshake.
 
 ##### Additional key material derivation
 Length obfuscation (explained below) requires the derivation of additional key material during handshaking. This is done via a modification to the `Split()` function of Noise, as defined in section 5.2 of the specification:
@@ -544,15 +756,33 @@ ModifiedSplit(): Returns a pair of CipherState objects for encrypting transport 
 
 `ask_root` is not the same kind of object as `c1` and `c2`. The purpose of this notation is simply to make clear that `ask_root` is an additional shared key calculated at the conclusion of the handshake, derived in the same HKDF operation as the key material used to create `c1` and `c2`.
 
+##### Ciphertext length obfuscation keys
+The `ask_root` is used to initialize four variables used for length obfuscation.
+
+```
+AskRoot // ask_root from ModifiedSplit() as described above
+
+keyRaw = HKDF(ikm=askRoot, len=2*FAST_HASH_LEN, salt=zeros(0), info="obfuscated-length-key")
+ivRaw = HKDF(ikm=askRoot, len=16, salt=zeros(0), info="obfuscated-length-iv")
+
+LenKeyA = keyRaw[0 ... FAST_HASH_LEN]
+LenKeyB = keyRaw[FAST_HASH_LEN ... 2*FAST_HASH_LEN]
+
+LenIvA = ivRaw[0 ... 8]
+LenIvB = ivRaw[8 ... 16]
+```
+
+The `LenKeyA`, `LenKeyB`, `LenIvA` and `LenIvB` fields are used in the Ciphertext Length Obfuscation section below.
+
 ##### Payloads
-The additional data sections are constructed as follows.
+The additional data sections `additionalA` and `additionalB` are constructed as follows.
 
 The initiator performs the following operations to calculate `additionalA` at the end of round 3:
 ```
 // HA refers to Noise handshake hash after the "se" symbol of round 3 has been processed
-// ArchiveId is archive ID belonging to archive that initiator intends to share with responder
+// FSID is FSID belonging to the filesystem initiator intends to share with responder
 
-idHash = HMAC(HA, ArchiveId)
+idHash = HMAC(key=HA, data=FSID)
 proofA = calculateProof(0, HA)
 
 additionalA = JSON({ idHash:idHash, proof:proofA }) || zeros(1)
@@ -572,51 +802,57 @@ The `calculateProof` function is used by both peers:
 
 ```
 calculateProof(index, hash):
-  // LocalHostHasReadKey true <=> the peer executing 
-  if(LocalHostHasReadKey == false):
+  // LocalHostHasRootKey true <=> the peer executing this function possesses the RootKey
+  if(LocalHostHasRootKey == false):
     return RNG(SYM_KEY_LEN)
-  return deriveSubkey(rootKey=PassphraseRoot, type=AUTH, name="handshake-proof:" || index || hash)
+  return deriveSubkey(parentKey=RootKey, name="handshake-proof", salt=index(1) || hash)
 ```
 
 The `proofA` and `proofB` fields to to allow the peers to supply proof that they possess knowledge of the passphrase root key. These proofs are calculated so that the verifier must also possess knowledge of the passphrase root key to determine if they are legitimate, and are bound by way of the handshake hash to the specific connection to prevent replay attacks.
 
-The purpose of this is to allow support for higher-level protocol messages that require each peer to have demonstrated read access to the archive contents.
+The purpose of this is to allow support for higher-level protocol messages that require each peer to have demonstrated read access to the filesystem contents.
+
+Either peer may conceal the fact that it possesses the `RootKey` by sending random bytes in place of a proof. If both peers possess the `RootKey` and the requestor admits to this by sending a valid proof, the responder may choose whether to also admit knowledge by sending its own proof, or to conceal its knowledge by sending a random proof. Peers will not grant access to privileged messages without a valid proof, and so this will limit the responder's behavior in the connection to the requestor to those actions that would be acceptable for a seed-only peer.
+
 
 ### Messaging
 The plaintext structure of the messages exchanged by peers is beyond the scope of this document. A given plaintext message is encrypted using the CipherState objects produced per the Noise specification. This includes authenticated encryption proving message integrity.
 
-Messages are serialized onto the wire as follows:
+Messages are transmitted as follows:
 
-```
-serialize(plaintext):
-  ciphertext = EncryptWithAd(zeros(0), plaintext) // Noise section 5.1, using appropriate CipherState from handshake
-  Rekey() // change CipherState key after each message, see Noise section 4.2, 5.1, 11.3
-  lenBytes = |ciphertext|(16)
-  obfuscatedLen = obfuscateLen(LenKey, lenBytes) // see below for LenKey and obfuscatedLen definition
-```
+| Serialized message |
+|-|
+| Obfuscated Length (16-bit) |
+| Ciphertext |
 
 #### Ciphertext length obfuscation
 
 The `FastHash` function is used to obfuscate the contents of length fields. This is done to prevent a casual observer from distinguishing a sample of EasySafe network traffic from random data. This obfuscation works as follows:
 
 ```
-// askRoot from ModifiedHash()
-initFastKeys(askRoot):
-  // divide HDKF output between sipA and sipB, each of length FAST_HASH_LEN
-  LenKeyA, LenKeyB = HKDF(ikm=askRoot, len=2*FAST_HASH_LEN, salt=zeros(0), info="obfuscated-length-key")
-  LenIvA, LenIvB = HKDF(ikm=askRoot, len=128, salt=zeros(0), info="obfuscated-length-iv")
+Length // Ciphertext length, in bytes
+sentByInitiator // True if message is to be sent from initiator to responder; false otherwise
 
-  // LenKeyA, LenKeyB, LenIvA, LenIvB are accessible by obfuscateLen
-
-obfuscateLen(sentByInitiator, lenBytes):
-  // we update the relevant LenIv field to ensure that `out` varies between invocations
-  if sentByInitiator:
-    out = LenIvA = FastHash(LenKeyA, LenIvA)
-  else:
-    out = LenIvB = FastHash(LenKeyB, LenIvB)
+if sentByInitiator:
+  out = LenIvA = FastHash(LenKeyA, LenIvA)
+else:
+  out = LenIvB = FastHash(LenKeyB, LenIvB)
   
-  return lenBytes ^ (out[0] << 8 | out[1]) // only use first 16 bits of output for XORing length field
+ObfuscatedLength = lenBytes ^ (out[0] << 8 | out[1]) // only use first 16 bits of output for XORing length field
 ```
+
+#### Ciphertext
+
+```
+EncryptWithAd // Encryption function from appropriate CipherState, per Noise section 5.1
+Plaintext // plaintext payload of message
+
+ciphertext = EncryptWithAd(zeros(0), Plaintext) // Noise section 5.1, using appropriate CipherState from handshake
+Length = |ciphertext|(16) // used for ciphertext length obfuscation above
+```
+
+#### Rekeying
+The `REKEY()` function defined by Noise (see sections 4.2, 5.1, 11.3 of Noise specification) is called after every call to `EncryptWithAd`.
 
 # Discussion
 
@@ -672,18 +908,18 @@ We will now suppose several different passphrase classes. Each class is listed w
 
 | Entropy (bits) | Description                                          | Example                              | 2019 average cost
 |--------|--------------------------------------------------------------|----------------------------------------------|---
-| 13.280 | Random selection from 10,000 most commonly-used passwords    | letmein                                      | $0.191
-| 19.930 | Random selection from 1,000,000 most commonly-used passwords | Nokia6233                                    | $19.2
-| 51.700 | 4 random words, 12.925 bits entropy/word (Diceware model)    | correct horse battery staple                 | $70.3 billion
-| 64.625 | 5 random words                                               | semantic defender unfold another penalize    | $547 trillion
-| 77.550 | 6 random words                                               | landmark maggot errant ranking renewal going | $4.25 quintillion
-| 256    | Derived key size                                             | L*YVS4}@u%i$/X%\_%^NW&hDsOXx=W{n0#.UI8.y     | $2.23 x 10^72
+| 13.280 | Random selection from 10,000 most commonly-used passwords    | letmein                                      | $0.1913
+| 19.930 | Random selection from 1,000,000 most commonly-used passwords | Nokia6233                                    | $19.21
+| 51.700 | 4 random words, 12.925 bits entropy/word (Diceware model)    | correct horse battery staple                 | $70.35 billion
+| 64.625 | 5 random words                                               | semantic defender unfold another penalize    | $547.1 trillion
+| 77.550 | 6 random words                                               | landmark maggot errant ranking renewal going | $4.255 quintillion
+| 256    | Derived key size                                             | L*YVS4}@u%i$/X%\_%^NW&hDsOXx=W{n0#.UI8.y     | $2.227 x 10^72
 
 The 256 bit level represents an upper bound on the complexity of an adversary's attack. For some passphrase strength <= 256 bits, it becomes more economical for the adversary to attack the derived keys directly, bypassing the key derivation algorithm entirely.
 
 The following analysis calculates the year in which an adversary will have a 50% chance of discovering the passphrase via brute force within a fixed budget in US dollars, as valued in 2019. It is expected in this model that inflation will affect the attacker's budget and cost of computing equally.
 
-The largest listed budget is $100 trillion, roughly equivalent to the present global GDP. This is chosen as an upper bound on the budget of any adversary. The minimum budget is $0.001. This is chosen as a point where the cost of brute forcing the passphrase is truly negligible, and the adversary may become indifferent as to whether the archive had been unencrypted in the first place. This threshold is not easy to define objectively, and it is also unclear when storage costs will make a rainbow table economical for each passphrase class.
+The largest listed budget is $100 trillion, roughly equivalent to the present global GDP. This is chosen as an upper bound on the budget of any adversary. The minimum budget is $0.001. This is chosen as a point where the cost of brute forcing the passphrase is truly negligible, and the adversary may become indifferent as to whether the filesystem had been unencrypted in the first place. This threshold is not easy to define objectively, and it is also unclear when storage costs will make a rainbow table economical for each passphrase class.
 
 | Entropy (bits) | $0.001 | $1   | $1,000 | $1 million | $1 billion | $100 trillion
 |----------------|--------|------|--------|------------|------------|---------------
@@ -721,7 +957,7 @@ The basic adversary is assumed to possess...
 1. ...the ability to view, alter, extend, truncate, create and/or drop any packet sent to or from any EasySafe peer.
 1. ...the ability to view, alter, extend, truncate, create and/or delete any file directly created by EasySafe on any host filesystem anywhere in realtime.\[1]
 2. ...knowledge of the contents of every file directly created by EasySafe on any host filesystem at any point in history.
-1. ...knowledge of the archive's seed key and archive ID
+1. ...knowledge of the filesystem's `SeedKey` and FSID
 1. ...knowledge of the version and full source code of any EasySafe application running on any peer
 2. ...knowledge of all key material used to encrypt network communications, including static keypairs, ephemeral keypairs, preshared secrets and any keys derived from aforementioned material.\[2]
 3. ...knowledge of the identities of each peer
@@ -733,36 +969,30 @@ The basic adversary is assumed to possess...
 ##### Oracle definitions
 
 ```
-// tag: Tag of an encrypted page/page tree chunk/config file
-// contents: Literal text of the encrypted file
+// allow adversary to determine if a given tag belongs to an inode table
 InodeTableOracle(tag, contents):
   isInodeTable // set true <=> the file represents the contents of a page of the inode table
   pageNum // set to page number of this inode table page if isInodeTable, else undefined
   refTag // set to the refTag of the inode table this page belongs to if isInodeTable, else undefined
   return [isInodeTable, refTag, pageNum]
 
-// allow adversary to craft an arbitrary page as if it has knowledge of all needed keys, and also force IV selection
-SuperPageEncryptionOracle(inodeIdentifier, pageNum, iv, pageText):
-  tweak = inodeIdentity(64) || pageNum(64)
-  pageSymKey = deriveSubkey(rootKey=ArchiveRoot, type=CIPHER, name="page:" || tweak)
-  pageAuthKey = deriveSubkey(rootKey=SeedRoot, type=AUTH, name="page:" || tweak)
-  
-  // The adversary of this model is allowed to override the IV in taggedEncrypt, making it deterministic.
-  return taggedEncrypt(symKey=chunkSymKey, authKey=chunkAuthKey, signPrivateKey=WritePrivateKey, iv=iv, plaintext=pageText)
+// allow adversary to craft an arbitrary encrypted page for a pre-specified distinguisher
+SuperPageEncryptionOracle(distinguisher, pageNum, pageText)
 
-// allow adversary to craft an arbitrary page tree chunk as if it has knowledge of all needed keys, and also force IV selection
-SuperPageTreeChunkEncryptionOracle(inodeIdentifier, chunkNum, iv, chunkText):
-  tweak = inodeIdentity(64) || chunkNum(64)
-  chunkSymKey = deriveSubkey(rootKey=ArchiveRoot, type=CIPHER, name="chunk:" || tweak)
-  chunkAuthKey = deriveSubkey(rootKey=SeedRoot, type=AUTH, name="chunk:" || tweak)
-  
-  // The adversary of this model is allowed to override the IV in taggedEncrypt, making it deterministic.
-  return taggedEncrypt(symKey=chunkSymKey, authKey=chunkAuthKey, signPrivateKey=WritePrivateKey, iv=iv, plaintext=chunkText)
+// allow adversary to craft an arbitrary page tree chunk
+SuperPageTreeChunkEncryptionOracle(distinguisher, chunkNum, chunkText)
+
+// allow adversary to craft an arbitrary encrypted page; distinguisher is randomly selected and not provided to adversary
+PageEncryptionOracle(pageNum, pageText)
+
+// allow adversary to craft an arbitrary encrypted page tree chunk; distinguisher is randomly selected and not provided to adversary
+PageTreeChunkEncryptionOracle(chunkNum, chunkText)
+
 ```
 
 \[1]: This does not extend to virtual memory dumps that may include sensitive key material. Nothing in this threat model should be taken to indicate that EasySafe provides security against an adversary with physical or privileged access to a peer's system while EasySafe is in operation.
 
-\[2]: This does not apply to key material related to the filesystem. Specifically, the basic adversary does not have knowledge of the passphrase, passphrase root, archive root, or any keys derived from this material.
+\[2]: This does not apply to key material related to the filesystem. Specifically, the basic adversary does not have knowledge of the passphrase, `RootKey`, `FSKey`, or any keys derived from this material.
 
 ##### Basic adversary limitations
 
@@ -770,20 +1000,20 @@ The adversary's capabilities are limited to those things listed above. The follo
 
 The adversary does not possess...
 
-1. ...advance knowledge of the passphrase, write key or archive root.
+1. ...advance knowledge of the read or write passphrase, `WritePrivateKey`, `RootKey` or `FSKey`.
 2. ...the ability to read the contents of EasySafe's memory.
 3. ...a technique for attacking any of the cryptographic primitives in less average time than a brute force attack.
-4. ...information about the archive other than what is stated in the definition, written to disk or sent over the network. The adversary has knowledge of the sequence of operations, but not their exact timing.[3]
+4. ...information about the filesystem other than what is stated in the definition, written to disk or sent over the network. The adversary has knowledge of the sequence of operations, but not their exact timing.[3]
 
 \[3] In reality, even casual observers almost certainly possess information about timing. Real adversaries may also possess other information such as sound, power utilization or EM radiation, any of which could enable a side channel attack. This restriction is intended to exclude matters of implementation and physical security from the analysis.
 
-#### Basic archive assumptions
+#### Basic filesystem assumptions
 
-The following assumptions are made of the structure of the archive.
+The following assumptions are made of the structure of the filesystem.
 
 1. The passphrase key contains K bits of entropy, K <= 256.
-2. The archive has P files containing pages or page tree chunks unrelated to the inode table.
-3. Any page within the archive possesses a minimum of F bits of entropy.
+2. The filesystem has P files containing pages or page tree chunks unrelated to the inode table.
+3. Any page within the filesystem possesses a minimum of F bits of entropy.
 
 #### Basic security levels
 EasySafe provides the following guarantees against the basic adversary. The adversary faces the following complexities:
@@ -792,16 +1022,16 @@ TODO: Sketch out algorithm/proof for each attack to show complexity, put online,
 
 | Task                                              | Minimum complexity (log 2) | Notes    |
 |---------------------------------------------------|--------------------|----------|
-| Delete data from an archive                  | 0 | The adversary can delete arbitrary pages from all peers, but does not have knowledge of what is being deleted beyond whether it is an inode table without performing a separate and more costly attack.
-| Insert data into an archive | K | The adversary can craft fake data using the `SuperPageEncryptionOracle` function, but cannot craft a fake RevisionTag.
+| Delete data from a filesystem                  | 0 | The adversary can delete arbitrary pages from all peers, but does not have knowledge of what is being deleted beyond whether it is an inode table without performing a separate and more costly attack.
+| Insert data into a filesystem | K | The adversary can craft fake data using the `SuperPageEncryptionOracle` function, but cannot craft a fake RevisionTag.
 | Determine authorship of encrypted page            | 0 | Adversary has capability to observe first peer to transmit page
-| Determine the contents of a page in the archive | (64 + F)\[1]      | Adversary brute forces guesses of file contents and `inodeIdentity` through `SuperPageEncryptionOracle`
-| Determine the number of files in the archive | 0\[2] | Adversary can learn approximate number based on inode table size, learned through `InodeTableOracle`. |
-| Determine when a file is unlinked from the archive filesystem | (64 + F)\[1,3,4] | Best known option is brute force of root directory, assuming file is in root directory (worst case)
-| Determine the specific size of a file in the archive | K[3] | Other than traffic analysis[3], best known option is brute force attack on inode table
-| Determine names of files within archives | (64 + F)\[1,4] | Brute force of root directory
-| Determine `stat_t`-like metadata concerning a file in the archive | K | Best known option is brute force attack on inode table
-| Determine whether a given file is in the archive | (64 + P)\[1] | Adversary combines `SuperPageEncryptionOracle` with a brute-force attack on 64-bit inodeIdentity against the IVs of each page observed in the archive
+| Determine the contents of a page in the filesystem | (64 + F)\[1]      | Adversary brute forces guesses of file contents and `inodeIdentity` through `SuperPageEncryptionOracle`
+| Determine the number of files in the filesystem | 0\[2] | Adversary can learn approximate number based on inode table size, learned through `InodeTableOracle`. |
+| Determine when a file is unlinked from the filesystem | (64 + F)\[1,3,4] | Best known option is brute force of root directory, assuming file is in root directory (worst case)
+| Determine the specific size of a file in the filesystem | K[3] | Other than traffic analysis[3], best known option is brute force attack on inode table
+| Determine names of files within filesystems | (64 + F)\[1,4] | Brute force of root directory
+| Determine `stat_t`-like metadata concerning a file in the filesystem | K | Best known option is brute force attack on inode table
+| Determine whether a given file is in the filesystem | (64 + P)\[1] | Adversary combines `SuperPageEncryptionOracle` with a brute-force attack on 64-bit inodeIdentity against the IVs of each page observed in the filesystem
 
 
 \[1]: or K, if K is lesser.
@@ -816,8 +1046,8 @@ The restricted threat model refers to an adversary whose capabilities are more l
 The restricted adversary possesses...
 
 1. ...the ability to view, alter, extend, truncate, create and/or drop any packet sent to or from any EasySafe peer.
-1. ...a copy of all data written to the EasySafe archive in encrypted form.
-1. ...knowledge of the archive's seed key and archive ID
+1. ...a copy of all data written to the EasySafe filesystem in encrypted form.
+1. ...knowledge of the filesystem's `SeedKey` and FSID
 1. ...knowledge of the version and full source code of any EasySafe application running on any peer
 4. ...access to the `InodeTableOracle` function, by which the adversary can at no cost identify inode table pages to attack.
 5. ...access to the `PageEncryptionOracle` function, by which the adversary can at no cost craft arbitrary properly-encoded pages with arbitrary plaintext.
@@ -834,16 +1064,16 @@ TODO: Sketch out algorithm/proof for each attack to show complexity.
 
 | Task                                              | Complexity (log 2) | Notes    |
 |---------------------------------------------------|--------------------|----------|
-| Delete data from an archive                  | N/A | The adversary cannot delete data from peer storage, and all existing files are immutable by design.
-| Insert data into an archive | K | The adversary can craft fake data using the `PageEncryptionOracle` function, but cannot craft a fake RevisionTag.
+| Delete data from a filesystem                  | N/A | The adversary cannot delete data from peer storage, and all existing files are immutable by design.
+| Insert data into a filesystem | K | The adversary can craft fake data using the `PageEncryptionOracle` function, but cannot craft a fake RevisionTag.
 | Determine authorship of encrypted page[3]            | N/A | 
-| Determine the contents of a page in the archive | K      | 
-| Determine the number of files in the archive | 0 | Adversary can learn approximate number based on inode table size, learned through `InodeTableOracle`.
-| Determine when a file is unlinked from the archive filesystem | K | 
-| Determine the approximate size of a file in the archive | K[3] | Other than traffic analysis[3], best known option is brute force attack on inode table
-| Determine names of files within archives | K | 
-| Determine `stat_t`-like metadata concerning a file in the archive | K | Best known option is brute force attack on inode table
-| Determine whether a given file is in the archive | K | 
+| Determine the contents of a page in the filesystem | K      | 
+| Determine the number of files in the filesystem | 0 | Adversary can learn approximate number based on inode table size, learned through `InodeTableOracle`.
+| Determine when a file is unlinked from the filesystem | K | 
+| Determine the approximate size of a file in the filesystem | K[3] | Other than traffic analysis[3], best known option is brute force attack on inode table
+| Determine names of files within filesystems | K | 
+| Determine `stat_t`-like metadata concerning a file in the filesystem | K | Best known option is brute force attack on inode table
+| Determine whether a given file is in the filesystem | K | 
 
 
 \[1]: or K, if K is lesser.
@@ -853,10 +1083,15 @@ TODO: Sketch out algorithm/proof for each attack to show complexity.
 ## Rationales
 
 ### Why not use JSON for the config file?
-Using JSON would mean that archive IDs would not follow deterministically from passphrases for default archives, since JSON does not guarantee a unique serialization for a given object.
+Using JSON would mean that FSIDs would not follow deterministically from passphrases for default filesystems, since JSON does not guarantee a unique serialization for a given object.
 
-### Why encode the archive config tag and page length in the archive ID?
-Peers receiving an archive for the first time need certain bootstrap info. The swarm protocol relies on parties agreeing on page size in advance. Although this is in the archive config, the archive config itself must be transmitted through the protocol. By encoding the page size directly into the ID, naive peers can immediately join in the swarm. By also basing the ID on the config tag, the configuration file can be validated to prove that it corresponds to the intended archive ID.
+### Why was the c5.18xlarge chosen in the Argon2 model?
+Several other instance classes, including the z1d.12xlarge were considered. In general, high-end instances had similar levels of performance once the number of vCPUs were taken into account, and the c5.18xlarge had the best performance per dollar of anything tested. Taking this instance at its lowest available price seems to be likely to get at least a rough picture of what an adversary can do today with easily-available resources.
+
+The adversary in the model is presumed to perform 10x more cost-effectively than the c5.18xlarge instance, to ensure that the adversary's capabilities are overestimated even if there is a more efficient option available today.
+
+### Why encode the filesystem config tag and page length in the FSID?
+Peers receiving a filesystem for the first time need certain bootstrap info. The swarm protocol relies on parties agreeing on page size in advance. Although this is in the filesystem config, the filesystem config itself must be transmitted through the protocol. By encoding the page size directly into the ID, naive peers can immediately join in the swarm. By also basing the ID on the config tag, the configuration file can be validated to prove that it corresponds to the intended FSID.
 
 ### Why use the "symobf" option instead of something like Elligator2?
 As of this writing, Elligator2 support is difficult to find. The symobf technique is similar to the methodology used in the i2p project's NTCP2 protocol.
@@ -865,7 +1100,7 @@ As of this writing, Elligator2 support is difficult to find. The symobf techniqu
 The DHT protocol is stateless, and also very size constrained. At present, DHT messages are limited to a maximum size of 508 bytes. Using an ephemeral key would consume additional space in the packet, and require a significant increase in the CPU load created by the protocol due to the extra Diffie-Hellman operation.
 
 ### What is the purpose of encrypting RevisionTags?
-Seed peers must be able to receive RevisionTags so they can be relayed to read-access peers. If the revision tags were not encrypted, the seed peers would gain unnecessary insight into the structure of the archive.
+Seed peers must be able to receive RevisionTags so they can be relayed to read-access peers. If the revision tags were not encrypted, the seed peers would gain unnecessary insight into the structure of the filesystem.
 
 ### Why does taggedEncrypt do encrypt-then-MAC instead of an AEAD cipher?
 The resulting tag would not be verifiable by seed peers, who do not possess the symmetric key used to produce the ciphertext. The MAC is calculated using a key derived from the seed root. Using an AEAD cipher in addition to this MAC would be an additional CPU cost, when authenticity and integrity are already guaranteed.
@@ -875,7 +1110,7 @@ A peer processing an incoming page or chunk must be able to provde three things,
 
 1. The text has not been tampered with.
 2. The text was created by someone with knowledge of the private write key.
-3. The text belongs to this archive, and not another archive that the write key may have been used for.
+3. The text belongs to this filesystem, and not another filesystem that the write key may have been used for.
 
 The asymmetric signature proves both 1) and 2), whereas the authenticated hash proves 1) and 3). Furthermore, the authenticated hash can be validated much more quickly, offering a reduced-cost way to perform integrity checking over a large batch of data.
 
@@ -884,17 +1119,10 @@ The use of page- and inode-specific derived keys with random salts provides resi
 
 Later versions may support page-independent keys with deterministic IVs as an option for users who desire de-duplication.
 
-### What if I want to revoke someone's access to an archive, or change the passphrase?
-Archive passwords are immutable. One option is to migrate the data in the archive to one with a new passphrase. This passphrase would then need to be distributed to the authorized parties. The means for doing this are beyond the scope of this document.
+### What if I want to revoke someone's access to a filesystem, or change the passphrase?
+Filesystem passphrases are immutable. One option is to migrate the data in the filesystem to one with a new passphrase. This passphrase would then need to be distributed to the authorized parties. The means for doing this are beyond the scope of this document.
 
 ### Why are side channel attacks excluded from the models?
 Side channel attacks are very difficult to model. Although design decisions can make a system more or less resistant to some side channel attacks, no design can possibly foil all of them. Major classes of security issues come down to hardware, implementation and physical security concerns.
 
 Certain real-world adversaries possess capabilities that go beyond the security model here and can easily break it. For instance, EasySafe has no means of protecting you if you are imprisoned and tortured until you reveal your passphrase. EasySafe cannot protect you from adversaries that participate in the thriving clandestine market for undisclosed exploits that will allow them access to your system. It also can't protect you if your adversary has access to a secret backdoor built into your CPU by the manufacturer.
-
-### Isn't this really great for bad people?
-Cryptography lets ordinary people safely talk and do business, even in the presence of adversaries. It's terrible for bad people on principle. EasySafe in particular is not a secure option for organized criminals or terrorist organizations, since all the security depends on a single unchangable passphrase. If any member of the group disclosed that passphrase, law enforcement would then be able to see the IP addresses of peers as well as the content of the archive. Although no one with any background in organized crime or terrorist activity was consulted in writing this model, it seems unlikely that this behavior is acceptable in that use case.
-
-It is also much harder to destroy the evidence of possessing an encrypted file. Encrypted data appears statistically random, and so a given encrypted file can be uniquely identified by just a few bytes taken from anywhere in the file. If someone tried to use EasySafe to conceal possession of unlawful material, they may actually be increasing their chances of conviction.
-
-Law enforcement and intelligence agencies also possess access to numerous side channel attacks beyond the scope of EasySafe's security model.
