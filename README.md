@@ -8,6 +8,8 @@ jonas@acrescrypto.com
 ###### Version
 Revision PRE-02, 2019-01-05
 
+This document is currently in an unstable draft status, and reflects pre-release software. 
+
 ###### Intellectual Property
 
 This work is licensed under a Creative Commons Attribution 4.0 International License. 
@@ -43,6 +45,14 @@ The operation `|x|` on a byte string `x` returns the number of bytes in `x`. Exa
 ```
 x = "abc"    // |x| = 3
 ```
+
+### Bitshift operator
+
+The operation `x << y` on a bit string `x` causes `x` to be shifted left by `y` bits. The `y` least significant bits of the result are set to 0.
+
+### XOR operator
+
+The operation `x ^ y` is understood to be equivalent to `x XOR y`.
 
 ### Standard crypto functions
 
@@ -135,32 +145,86 @@ deriveSubkey(parentKey, name, salt):
   return HKDF(ikm=parentKey, length=SYM_KEY_LEN, salt=name || salt, info="easysafe-subkey");
 ```
 
+### Tagged encryption
+
+The following methodology is used to perform the `taggedEncrypt` function, used several times in this document.
+
+#### Arguments
+
+The `taggedEncrypt` function has the following arguments:
 ```
-taggedEncrypt(symRootKey, authKey, signPrivateKey, plaintext):
-  salt = HKDF(ikm=plaintext, length=16, salt=symRootKey, info="easysafe-tagged-file-salt")
-  derivedKey[SYM_KEY_LEN] = HKDF(ikm=salt, length=SYM_KEY_LEN, salt=symRootKey, info="easysafe-tagged-file-key")
-  paddedPlaintext = pad(data=plaintext, len=PAGE_LEN) // must have: |plaintext| <= PAGE_LEN
-  ciphertext = SymmetricEncrypt(key=derivedKey, iv=zeros(SYM_IV_LEN), plaintext=paddedPlaintext)
-  
-  signature = AsymmetricSign(privateKey=signPrivateKey, data=salt || ciphertext)
-  output = salt || ciphertext || signature
-  tag = HMAC(key=authKey, data=output)
-  
-  return tag, output
+taggedEncrypt(symRootKey, authKey, signPrivateKey, plaintext)
 ```
 
+| Argument | Description
+|--|--|
+| SymRootKey | Key material used to derive encryption key
+| KeySalt | Additional salt to use in encryption key derivation
+| AuthKey | Key used to authenticate resultant ciphertext
+| SignPrivateKey | Private key used to sign resultant ciphertext
+| Plaintext | Plaintext to be encrypted
+
+#### Result
+
+The `taggedEncrypt` function produces a two-tuple of the form (tag, ciphertext):
+
+| Result | Description
+|-|-|
+| Tag | Authenticated hash of ciphertext using supplied `AuthKey` |
+| SignedCiphertext | Signed ciphertext, encrypted using material from `SymRootKey` and signed with `SignPrivateKey`
+
+#### Methodology
+
+##### Plaintext padding
+The plaintext is first padded to the fixed page size.
+
 ```
-taggedDecrypt(symRootKey, authKey, signPrivateKey, tag, signedCiphertext):
-  salt = HKDF(ikm=plaintext, length=16, salt=symRootKey, info="easysafe-tagged-file-salt")
-  derivedKey[SYM_KEY_LEN] = HKDF(ikm=salt, length=SYM_KEY_LEN, salt=symRootKey, info="easysafe-tagged-file-key")
-  ciphertext = signedCiphertext[16 ... |signedCiphertext| - ASYM_SIG_LEN]
-  signature = signedCiphertext[|signedCiphertext| - ASYM_SIG_LEN ... |signedCiphertext|]
-  
-  ASSERT(HMAC(key=authKey, data=signedCiphertext) == tag)
-  ASSERT(AsymmetricVerify(publicKey=signPrivateKey, signature=signature, data=salt || ciphertext))
-  
-  paddedPlaintext = SymmetricDecryptStream(key=derivedKey, iv=zeros(SYM_IV_LEN), ciphertext=ciphertext)
-  return unpad(paddedPlaintext)
+PaddedPlaintext = pad(data=Plaintext, len=PAGE_LEN) // must have: |Plaintext| <= PAGE_LEN
+```
+
+##### Key derivation
+File-specific keys are derived based on the
+
+```
+keyMaterial = HDKF(ikm=KeySalt, length=2*SYM_KEY_LENGTH, salt=symRootKey, info="tagged-encryption-key-material")
+TextKey = keyMaterial[0 ... SYM_KEY_LENGTH]
+SaltKey = keyMaterial[SYM_KEY_LENGTH ... 2*SYM_KEY_LENGTH]
+```
+
+##### File salt
+A plaintext-specific salt is derived using the `SaltKey`:
+
+```
+PTSalt = HMAC(key=SaltKey, data=PaddedPlaintext)
+```
+
+##### Encryption key derivation
+The `PTSalt` is used to derive an encryption key:
+
+```
+EncryptionKey = deriveSubkey(parentKey=symRootKey, name="tagged-encryption-key", salt=PTSalt)
+```
+
+##### Unsigned ciphertext
+The encryption key is used to produce unauthenticated ciphertext:
+
+```
+RawCiphertext = SymmetricEncrypt(key=EncryptionKey, nonce=zeros(SYM_IV_LEN), plaintext=PaddedPlaintext)
+```
+
+##### Signature
+The raw ciphertext is signed and combined with the `PTSalt` to produce the final ciphertext:
+
+```
+signature = AsymmetricSign(key=SignPrivateKey, data=RawCiphertext)
+SignedCiphertext = PTSalt || RawCiphertext || signature
+```
+
+##### Tag
+The ciphertext is authenticated using the auth key.
+
+```
+Tag = HMAC(key=authKey, data=Ciphertext)
 ```
 
 # Filesystem
@@ -862,21 +926,31 @@ The Argon2d variant is selected for its superior resistance to GPU and ASIC atta
 
 Argon2 offers a tradeoff between time and resource consumption in the form of its parallelism setting. By allowing a high degree of parallelism, a system with many cores can quickly derive a passphrase key, but must invest multiple cores to do so. There is no requirement that these threads actually run in parallel, and a single-CPU system may still perform the derivation.
 
-As a design goal, the remaining Argon2 parameters were chosen so that a system in the 5th percentile of computing power for home users would be able to derive a passphrase key in one minute. As a further design parameter, it is assumed that such a system is likely at 75% utilization due to processes other than EasySafe.
+As a design goal, the remaining Argon2 parameters were chosen so that a system in the 5th percentile of computing power for home users would be able to derive a passphrase key in one minute. As a further design parameter, it is assumed that such a system is likely at 75% utilization due to processes other than EasySafe. This is based on the observation that low-end systems often have high baseline utilization due to the demands of newer operating systems and software, and accumulated background processes.
 
-According to the Steam Hardware and Software Survey of November 2018, over 95% of systems were reported as having at least 4GB of RAM and 2 CPUs.
+### Proxy system
+A replicable system was defined to act as a proxy to the hypothetical 5th percentile computer running at 75% load. An appropriate number of iterations was then calculated through experimentation on this replicable system.
 
-The time factor was calculated by selecting the maximum number of iterations that could be performed with an average elapsed time of under 15 seconds using an Amazon t3.small instance (2 vCPU, 2GiB RAM) running a fresh installation of Ubuntu 18.04[1] with the T3 Unlimited option enabled, as a proxy to the hypothetical 5th percentile home user with 75% load.
+According to the Steam Hardware and Software Survey of November 2018, over 95% of systems were reported as having at least 4GB of RAM and 2 CPUs. This is understood to mean 1GiB is available for Argon2 key derivations, as the system is assumed to be under 75% load.
 
-The following command was found to have an average completion time of 14.967 seconds, with a standard deviation of 82.37ms (n=100):
+As a proxy system, the Amazon EC2 t3.small instance was chosen. As a commercial virtual instance, it is highly standardized and easily available. The system has 2vCPU and 2GiB RAM, approximating the estimated specifications of the 5th percentile computer.
+
+### Experiment
+The proxy system instance was created with a fresh installation of Ubuntu 18.04[1] in the us-east-1d availability zone. The T3 Unlimited option was enabled. The system reported its CPU type in `/proc/cpuinfo` to be `Intel(R) Xeon(R) CPU E5-2676 v3 @ 2.40GHz`. The `build-essential` package was installed, and Argon2 was then downloaded, compiled and run from its reference implementation[2], and executed with 16 threads of parallelism and 1GiB of RAM utilization. The salt and passphrase were chosen to be representative of what is expected for ordinary use of EasySafe.
+
+This was repeated at various iteration counts until a count that consistently completed in an average of approximately 15 seconds was identified. The target time of 15 seconds was chosen under the assumption that it is a useful proxy for a target time of 60 seconds on a system under 75% CPU load.
+
+The following command, specifying 40 iterations, was found to have an average completion time of 14.967 seconds, with a standard deviation of 82.37ms (n=100):
 
 ```
 echo -n "landmark maggot errant ranking renewal going" | \
     time -f "%e" ./argon2 easysafe-argon2-salt -d -k 1048576 -p 16 -l 32 -e -v 13 -t 40 > /dev/null
 ```
 
-\[1]: Ubuntu 18.04 was installed from the `ami-0ac019f4fcb7cb7e6` image.
+Thus, an iteration count of 40 was selected for the Argon2 parameters of EasySafe.
 
+\[1]: Ubuntu 18.04 was installed from the `ami-0ac019f4fcb7cb7e6` image.
+\[2]: Obtained from https://github.com/P-H-C/phc-winner-argon2. Commit 6c8653c was used, as it was the latest commit to the 'master' branch at the time of evaluation.
 
 
 ### Cost analysis
@@ -940,7 +1014,7 @@ The above model is presented to provide an estimate for the minimum duration Eas
 
 Bruce Schneier points out in Applied Cryptography that if the energy of a typical supernova could be dedicated to computation in an idealized system operating with maximum theoretical efficiency at the average temperature of the universe, then that system could count to approximately 2^219. This is several hundred billion times less expensive than counting to 2^256. This does not account for any of the energy needed to perform any calculations with this counter.
 
-The prediction that the adversary will have access to billions of supernovas worth of energy for the present-day value of $0.001 suggests that the model strongly overestimates the adversary's capabilities.
+The prediction that the adversary will have access to billions of supernovas worth of energy for the present-day value of $0.001 suggests that the model strongly overestimates the adversary's capabilities. Therefore, the actual life expectancy of a passphrase may be much greater than what is predicted in this section.
 
 ##### Inadequacy of ordinary passphrases
 Weak passphrase selection is an ongoing problem in information security. Even given a key derivation function that is extremely expensive by current standards, the most commonly-used passwords are economical to attack even today. Users must select passphrases much stronger than what is typically selected today for EasySafe to provide a reasonable assurance of confidentiality.
