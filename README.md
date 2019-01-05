@@ -145,6 +145,18 @@ deriveSubkey(parentKey, name, salt):
   return HKDF(ikm=parentKey, length=SYM_KEY_LEN, salt=name || salt, info="easysafe-subkey");
 ```
 
+```
+hex(bytes): // convert byte array to hexadecimal string
+
+example: hex({ 0x00, 0x01, 0x10, 0x20 }) = "00011020"
+```
+
+```
+// Convert a hash to a path, eg. 1234abcdef -> 12/34/abcdef
+hashpath(hash):
+  return hex(hash[0 ... 2]) || "/" || hex(hash[2 ... 4]) || "/" || hex(hash[4 ... HASH_LEN])
+```
+
 ### Tagged encryption
 
 The following methodology is used to perform the `taggedEncrypt` function, used several times in this document.
@@ -441,15 +453,7 @@ The "Page" and "Page Tree" structures are described below.
 
 ### Pages
 #### Plaintext structure
-Files are divded into individual pages of fixed length for storage. The plaintext of each page is structured as follows:
-
-| Field | Length (bytes)
-|---------|---|
-| length | 4 | Length of data in page
-| data | length | Plaintext from file
-| padding | PAGE_SIZE - length | Null padding to read fixed length
-
-The `length` field is `PAGE_SIZE` or the number of bytes in the final page of the file, whichever is lesser.
+Files are divded into individual pages of fixed length (`PAGE_SIZE`) for storage. The final page of a file may be shorter than the `PAGE_SIZE`. The final page is padded during encryption so that all encrypted pages have the same length.
 
 #### Ciphertext
 The plaintext is encrypted, resulting in a ciphertext and page tag.
@@ -488,7 +492,9 @@ Each chunk is a list of tags. For branch nodes, these tags reflect the tags of t
 | tag1 |
 | ... |
 
-The chunk plaintext is padded so that its total length is `PAGE_SIZE`.
+Each chunk has as many tags as can be fit into `PAGE_SIZE` bytes. If the filesystem `PAGE_SIZE` is not a multiple of `HASH_LEN`, then the chunk is padded during encryption so that the resulting ciphertexts match the lengths of ordinary pages.
+
+If a chunk does not have enough child tags to fill `PAGE_SIZE` bytes, then each missing tag is set to `zeros(HASH_LEN)`.
 
 #### Page tree chunk ciphertext
 
@@ -904,6 +910,9 @@ else:
   
 ObfuscatedLength = lenBytes ^ (out[0] << 8 | out[1]) // only use first 16 bits of output for XORing length field
 ```
+
+##### Impracticality of concealing length
+The purpose of obfuscating the ciphertext lengths is not to prevent a determined adversary from learning these lengths. In practice, an observer will most likely be able to infer the obfuscated lengths by observing the timing and structure of packets. The sole purpose of obfuscating the length fields to prevent a casual observer from distinguishiung EasySafe network traffic from random data.
 
 #### Ciphertext
 
