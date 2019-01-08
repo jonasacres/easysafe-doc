@@ -32,7 +32,7 @@ This document is currently in an unstable draft status, and reflects pre-release
 | 3.6 | [RefTag](03-Filesystem/03-06-reftag.md) | Discussion of RefTag object, used in encrypted EasySafe data structures
 | 3.7 | [Pages](03-Filesystem/03-07-pages.md) | How plaintext files are converted to pages and encrypted
 | 3.8 | [Page Trees](03-Filesystem/03-08-page-trees.md) | Data structure used to locate large files in EasySafe
-| 3.9 | [Revision Tags](03-Filesystems/03-09-revision-tags.md) | Discussion of Revision Tag object, used to describe filesystem states
+| 3.9 | [Revision Tags](03-Filesystem/03-09-revision-tags.md) | Discussion of Revision Tag object, used to describe filesystem states
 
 ## Chapter 4: Distributed hash table
 | Chapter | Title | Description
