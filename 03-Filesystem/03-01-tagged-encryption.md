@@ -37,10 +37,10 @@ PaddedPlaintext = pad(data=Plaintext, len=PAGE_SIZE) // must have: |Plaintext| <
 ```
 
 #### Key derivation
-File-specific keys are derived based on the
+File-specific keys are derived based on the`SymRootKey`:
 
 ```
-keyMaterial = HDKF(ikm=KeySalt, length=2*SYM_KEY_LENGTH, salt=symRootKey, info="tagged-encryption-key-material")
+keyMaterial = HDKF(ikm=KeySalt, length=2*SYM_KEY_LENGTH, salt=SymRootKey, info="tagged-encryption-key-material")
 TextKey = keyMaterial[0 ... SYM_KEY_LENGTH]
 SaltKey = keyMaterial[SYM_KEY_LENGTH ... 2*SYM_KEY_LENGTH]
 ```
