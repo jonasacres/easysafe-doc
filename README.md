@@ -53,8 +53,8 @@ This document is currently in an unstable draft status, and reflects pre-release
 ## Chapter 6: Passphrase-based Key Derivation
 | Chapter | Title | Description
 |-|-|-|
-| 6.1 | [Parameters](06-DHT/06-01-parameters.md) | Explanation of selection process for Argon2 parameters
-| 6.2 | [Threat model](06-DHT/06-02-threat-model.md) | Calculation of life expectancy for passphrases of various strengths against model adversary
+| 6.1 | [Parameters](06-PBKDF/06-01-parameters.md) | Explanation of selection process for Argon2 parameters
+| 6.2 | [Threat model](06-PBKDF/06-02-threat-model.md) | Calculation of life expectancy for passphrases of various strengths against model adversary
 
 ## Chapter 7: Filesystem Threat Model
 | Chapter | Title | Description
