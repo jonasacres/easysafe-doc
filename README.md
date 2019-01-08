@@ -5,7 +5,7 @@ EasySafe is a distributed, encrypted filesystem. The filesystem can be read and 
 
 This document explains the cryptography used to encrypt files, locate peers and communicate with them.
 
-This document is currently in an unstable draft status, and reflects pre-release software. It is therefore highly subject to change.
+This document is currently in an unstable draft status, and reflects pre-release software. It is therefore incomplete and highly subject to change.
 
 ## The good stuff
 
