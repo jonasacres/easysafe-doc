@@ -22,8 +22,6 @@ The restricted adversary has the same limitations as the basic adversary.
 
 ### 7.2.4 Restricted model security levels
 
-TODO: Sketch out algorithm/proof for each attack to show complexity.
-
 | Task                                              | Complexity (log 2) | Notes    |
 |---------------------------------------------------|--------------------|----------|
 | Delete data from a filesystem                  | N/A | The adversary cannot delete data from peer storage, and all existing files are immutable by design.
