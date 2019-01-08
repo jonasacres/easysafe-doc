@@ -12,7 +12,7 @@ This document is currently in an unstable draft status, and reflects pre-release
 I want to know...
 
 | ... | Chapter
-|--|
+|--|--|
 | Which algorithms are used | [2.2](02-Conventions/02-02-crypto.md) |
 | What security guarantees are made | [7.1](07-FilesystemThreat/07-01-basic-adversary.md), [7.2](07-FilesystemThreat/07-02-restricted-adversary.md)
 | How keys are derived | [3.2](03-Filesystem/03-02-key-derivations.md) |
