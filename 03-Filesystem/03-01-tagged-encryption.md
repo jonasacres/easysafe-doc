@@ -66,7 +66,7 @@ The encryption key is used to produce unauthenticated ciphertext:
 RawCiphertext = SymmetricEncrypt(key=EncryptionKey, nonce=zeros(SYM_IV_LEN), plaintext=PaddedPlaintext)
 ```
 
-#### Signature
+#### Signed Ciphertext
 The raw ciphertext is signed and combined with the `PTSalt` to produce the final ciphertext:
 
 ```
@@ -80,3 +80,5 @@ The ciphertext is authenticated using the auth key.
 ```
 Tag = HMAC(key=authKey, data=Ciphertext)
 ```
+
+`(Tag, SignedCiphertext)` is the result.
