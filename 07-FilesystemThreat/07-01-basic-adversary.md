@@ -73,8 +73,6 @@ The following assumptions are made of the structure of the filesystem.
 ### 7.1.6 Basic security levels
 EasySafe provides the following guarantees against the basic adversary. The adversary faces the following complexities:
 
-TODO: Sketch out algorithm/proof for each attack to show complexity, put online, provide link here.
-
 | Task                                              | Minimum complexity (log 2) | Notes    |
 |---------------------------------------------------|--------------------|----------|
 | Delete data from a filesystem                  | 0 | The adversary can delete arbitrary pages from all peers, but does not have knowledge of what is being deleted beyond whether it is an inode table without performing a separate and more costly attack.
