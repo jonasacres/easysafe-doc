@@ -10,10 +10,12 @@ This document is currently in an unstable draft status, and reflects pre-release
 
 ## Chapter 1: About
 | Chapter | Title | Description
+|-|-|-|
 | 1.1 | [About this document](01-Document/01-01-about.md) | Author, copyright and IP information
 
 ## Chapter 2: Conventions
 | Chapter | Title | Description
+|-|-|-|
 | 2.1 | [Operators](02-Conventions/02-01-operators.md) | Definitions of operators used throughout the documentation
 | 2.2 | [Cryptographic function specifications](02-Conventions/02-02-crypto.md) | Definitions of cryptographic functions used throughout the documentation
 | 2.3 | [Constants](02-Conventions/02-03-constants.md) | Definitions of constants used throughout the documentation
@@ -21,6 +23,7 @@ This document is currently in an unstable draft status, and reflects pre-release
 
 ## Chapter 3: Filesystem
 | Chapter | Title | Description
+|-|-|-|
 | 3.1 | [Tagged Encryption](03-Filesystem/03-01-tagged-encryption.md) | Encryption methodology used to store individual encrypted files
 | 3.2 | [Key Derivations](03-Filesystem/03-02-key-derivations.md) | Explanation of how keys are derived for use throughout EasySafe
 | 3.3 | [Configuration](03-Filesystem/03-03-config.md) | Encryption methodology used to produce filesystem-specific configuration file
@@ -33,6 +36,7 @@ This document is currently in an unstable draft status, and reflects pre-release
 
 ## Chapter 4: Distributed hash table
 | Chapter | Title | Description
+|-|-|-|
 | 4.1 | [Protocol](04-DHT/04-01-protocol.md) | Overview of DHT protocol
 | 4.2 | [Temporal lookup keys](04-DHT/04-02-temporal-lookup-keys.md) | Discussion of short-lived filesystem-specific identifier sought in DHT
 | 4.3 | [Message-level cryptography](04-DHT/04-03-message-crypto.md) | How messages between DHT peers are encrypted
@@ -41,20 +45,24 @@ This document is currently in an unstable draft status, and reflects pre-release
 
 ## Chapter 5: Peer-to-peer Swarm
 | Chapter | Title | Description |
+|-|-|-|
 | 5.1 | [Protocol](05-P2P/05-01-protocol.md) | Peer-to-peer messaging protocol for exchanging filesystem data
 | 5.2 | [Handshake](05-P2P/05-02-handshake.md) | Noise-based protocol for establishing secure connection between peers
 | 5.3 | [Messaging](05-P2P/05-03-messaging.md) | Message-level cryptography for swarming protocol
 
 ## Chapter 6: Passphrase-based Key Derivation
 | Chapter | Title | Description
+|-|-|-|
 | 6.1 | [Parameters](06-DHT/06-01-parameters.md) | Explanation of selection process for Argon2 parameters
 | 6.2 | [Threat model](06-DHT/06-02-threat-model.md) | Calculation of life expectancy for passphrases of various strengths against model adversary
 
 ## Chapter 7: Filesystem Threat Model
 | Chapter | Title | Description
+|-|-|-|
 | 7.1 | [Basic Adversary](07-FilesystemThreat/07-01-basic-adversary.md) | Analysis of filesystem security guarantees assuming an adversary with very strong capabilities
 | 7.2 | [Restricted Adversary](07-FilesystemThreat/07-02-restricted-adversary.md) | Analysis of filesystem security guarantees assuming an adversary with a lesser set of capabilities compared to the basic model
 
 ## Chapter 8: Rationales
 | Chapter | Title | Description
+|-|-|-|
 | 8.1 | [Rationales](08-Discussion/08-01-rationales.md) | FAQ-like discussion of various design decisions
