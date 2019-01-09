@@ -7,8 +7,8 @@ EasySafe relies on peer-reviewed, publicly-disclosed algorithms for all cryptogr
 |------|--------------------|--------------|
 | Hash(data) | Blake2b            | 512         
 | FastHash(key, data) | SipHash-2-4 | 64
-| HMAC(key, data)| RFC 2104           | 
-| HKDF(ikm, length, salt, info) | RFC 5869     | 
+| HMAC(key, data)| As specified in RFC 2104           | 
+| HKDF(ikm, length, salt, info) | As specified in RFC 5869     | 
 | SymmetricEncrypt(key, iv, plaintext) | ChaCha20 | 256 key / 96 nonce
 | SymmetricEncryptAEAD(key, iv, plaintext) | ChaCha20-Poly1305 | 256 key / 96 nonce / 128 tag
 | AsymmetricSharedSecret(privateKey, publicKey) | X25519 | 256

@@ -37,10 +37,10 @@ PaddedPlaintext = pad(data=Plaintext, len=PAGE_SIZE) // must have: |Plaintext| <
 ```
 
 #### Key derivation
-File-specific keys are derived based on the
+File-specific keys are derived based on the`SymRootKey`:
 
 ```
-keyMaterial = HDKF(ikm=KeySalt, length=2*SYM_KEY_LENGTH, salt=symRootKey, info="tagged-encryption-key-material")
+keyMaterial = HDKF(ikm=KeySalt, length=2*SYM_KEY_LENGTH, salt=SymRootKey, info="tagged-encryption-key-material")
 TextKey = keyMaterial[0 ... SYM_KEY_LENGTH]
 SaltKey = keyMaterial[SYM_KEY_LENGTH ... 2*SYM_KEY_LENGTH]
 ```
@@ -66,7 +66,7 @@ The encryption key is used to produce unauthenticated ciphertext:
 RawCiphertext = SymmetricEncrypt(key=EncryptionKey, nonce=zeros(SYM_IV_LEN), plaintext=PaddedPlaintext)
 ```
 
-#### Signature
+#### Signed Ciphertext
 The raw ciphertext is signed and combined with the `PTSalt` to produce the final ciphertext:
 
 ```
@@ -80,3 +80,5 @@ The ciphertext is authenticated using the auth key.
 ```
 Tag = HMAC(key=authKey, data=Ciphertext)
 ```
+
+`(Tag, SignedCiphertext)` is the result.

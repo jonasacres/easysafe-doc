@@ -1,8 +1,6 @@
 # 4. Distributed hash table
 ## 4.3 Message-level cryptography
-Each DHT peer has a static X25519 keypair used to encrypt messages. Message plaintexts are encrypted using key material derived from the shared secret produced by the static keys of the two parties. Because these keys are static, a compromise of a peer's private key allows an adversary retroactive decryption of any previous messages sent during the lifespan of that key.
-
-Messages are encrypted and serialized as follows.
+Each DHT peer has a static X25519 keypair used to encrypt messages. Message plaintexts are encrypted using key material derived from the shared secret produced by the static keys of the two parties. Because these keys are static, a compromise of a peer's private key allows an adversary retroactive decryption of any previous messages sent during the lifespan of that key. This is accepted as the DHT contains only routing information with time-limited value.
 
 ### 4.3.1 Parameters
 
