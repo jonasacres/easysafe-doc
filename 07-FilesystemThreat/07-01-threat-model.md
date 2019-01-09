@@ -35,7 +35,7 @@ It is possible that better attacks can be formulated. The reader is encouraged t
 
 | Task | Blind | Restricted | Extreme
 |--|--|--|--
-| Determine the contents of a page in the filesystem | [K+P](blind/read-page-contents#easysafe-attack-sketch.md) | [K](restricted/read-page-contents.md#easysafe-attack-sketch) | [64 + F](extreme/read-page-contents.md#easysafe-attack-sketch) |
+| Determine the contents of a page in the filesystem | [K+P](blind/read-page-contents#easysafe-attack-sketch.md) | [K](restricted/read-page-contents.md#easysafe-attack-sketch) | [F + 64](extreme/read-page-contents.md#easysafe-attack-sketch) |
 | Determine whether a given file is in the filesystem | [K+P](blind/determine-file-existence.md#easysafe-attack-sketch) | [K](restricted/determine-file-existence.md#easysafe-attack-sketch) | [K](extreme/determine-file-existence.md#easysafe-attack-sketch) |
 | Delete data from the filesystem | [Infeasible](blind/delete-data.md#easysafe-attack-sketch) | [Infeasible](restricted/delete-data.md#easysafe-attack-sketch) | [0](extreme/delete-data.md#easysafe-attack-sketch) |
 | Insert data into the filesystem | [K + P](blind/add-data.md#easysafe-attack-sketch) | [K](restricted/add-data.md#easysafe-attack-sketch) | [K](extreme/add-data.md#easysafe-attack-sketch) |
@@ -44,7 +44,7 @@ It is possible that better attacks can be formulated. The reader is encouraged t
 | Determine the number of files in the filesystem | [K + P](blind/determine-file-count.md#easysafe-attack-sketch) | [0*](restricted/determine-file-count.md#easysafe-attack-sketch) | [0*](extreme/add-data.md#easysafe-attack-sketch) |
 | Determine when a file is unlinked from the filesystem | [K + P](blind/determine-unlink.md#easysafe-attack-sketch) | [K](restricted/determine-unlink.md#easysafe-attack-sketch) | [K](extreme/determine-unlink.md#easysafe-attack-sketch) |
 | Determine the specific size of a file in the filesystem | [K + P](blind/determine-file-size.md#easysafe-attack-sketch) | [K](restricted/determine-file-size.md#easysafe-attack-sketch) | [F + 64](extreme/determine-file-size.md#easysafe-attack-sketch) |
-| Determine names of files within filesystems | [K + P](blind/determine-filename.md#easysafe-attack-sketch) | [K](restricted/determine-filename.md#easysafe-attack-sketch) | [64 + F](extreme/determine-filename.md#easysafe-attack-sketch) |
+| Determine names of files within filesystems | [K + P](blind/determine-filename.md#easysafe-attack-sketch) | [K](restricted/determine-filename.md#easysafe-attack-sketch) | [F + 64](extreme/determine-filename.md#easysafe-attack-sketch) |
 
 Note that for all tasks, there is a maximum complexity based on the passphrase entropy K. In the Blind model, the maximum complexity is K + P. In the Restricted and Extreme models, the maximum complexity is K, due to these adversaries having access to the `InodeTableOracle`.
 
