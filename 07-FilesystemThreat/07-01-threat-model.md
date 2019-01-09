@@ -21,9 +21,9 @@ It is possible that better attacks can be formulated. The reader is encouraged t
 ### 7.1.3 Adversaries
 | Adversary name | Chapter | Description
 |----------------|---------|-------------
-| Extreme        | 7.2     | Universal network and storage access with extensive chosen-plaintext capabilities
-| Restricted     | 7.3     | Attacker with knowledge of `FSID` and `SeedKey` and moderate chosen-plaintext capabilities
-| Blind          | 7.4     | Attacker possesses encrypted pages, but has no further information about them
+| [Extreme](07-02-extreme-adversary.md#7-filesystem-threat-model)        | 7.2     | Universal network and storage access with extensive chosen-plaintext capabilities
+| [Restricted](07-03-restricted-adversary.md#7-filesystem-threat-model)     | 7.3     | Attacker with knowledge of `FSID` and `SeedKey` and moderate chosen-plaintext capabilities
+| [Blind](07-04-blind-adversary.md#7-filesystem-threat-model)          | 7.4     | Attacker possesses encrypted pages, but has no further information about them
 
 ### 7.1.4 Filesystem assumptions
 
