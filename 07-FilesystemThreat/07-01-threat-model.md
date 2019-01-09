@@ -33,10 +33,12 @@ It is possible that better attacks can be formulated. The reader is encouraged t
 
 ### 7.1.5 Tasks
 
+The complexity of each attack, broken down by task and adversary model, is presented in the table below.
+
 | Task | Blind | Restricted | Extreme
 |--|--|--|--
-| Determine the contents of a page in the filesystem | [K+P](blind/read-page-contents#easysafe-attack-sketch.md) | [K](restricted/read-page-contents.md#easysafe-attack-sketch) | [F + 64](extreme/read-page-contents.md#easysafe-attack-sketch) |
-| Determine whether a given file is in the filesystem | [K+P](blind/determine-file-existence.md#easysafe-attack-sketch) | [K](restricted/determine-file-existence.md#easysafe-attack-sketch) | [K](extreme/determine-file-existence.md#easysafe-attack-sketch) |
+| Determine the contents of a page in the filesystem | [K + P](blind/read-page-contents#easysafe-attack-sketch.md) | [K](restricted/read-page-contents.md#easysafe-attack-sketch) | [F + 64](extreme/read-page-contents.md#easysafe-attack-sketch) |
+| Determine whether a given file is in the filesystem | [K + P](blind/determine-file-existence.md#easysafe-attack-sketch) | [K](restricted/determine-file-existence.md#easysafe-attack-sketch) | [K](extreme/determine-file-existence.md#easysafe-attack-sketch) |
 | Delete data from the filesystem | [Infeasible](blind/delete-data.md#easysafe-attack-sketch) | [Infeasible](restricted/delete-data.md#easysafe-attack-sketch) | [0](extreme/delete-data.md#easysafe-attack-sketch) |
 | Insert data into the filesystem | [K + P](blind/add-data.md#easysafe-attack-sketch) | [K](restricted/add-data.md#easysafe-attack-sketch) | [K](extreme/add-data.md#easysafe-attack-sketch) |
 | Modify existing data in the filesystem | TODO | TODO | TODO
