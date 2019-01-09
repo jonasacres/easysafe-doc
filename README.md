@@ -15,7 +15,7 @@ I want to know...
 |--|--|
 | Which algorithms are used? | [2.2](https://github.com/jonasacres/easysafe-doc/blob/master/02-Conventions/02-02-crypto.md#22-cryptographic-function-specifications) |
 | How feasible is a brute-force attack? | [6.2](https://github.com/jonasacres/easysafe-doc/blob/master/06-PBKDF/06-02-threat-model.md#6-passphrase-based-key-derivation) |
-| What security claims are made? | [7.1](https://github.com/jonasacres/easysafe-doc/blob/master/07-FilesystemThreat/07-01-basic-adversary.md#7-filesystem-threat-model), [7.2](https://github.com/jonasacres/easysafe-doc/blob/master/07-FilesystemThreat/07-02-restricted-adversary.md#7-filesystem-threat-model)
+| What security claims are made? | [7.1](https://github.com/jonasacres/easysafe-doc/blob/master/07-FilesystemThreat/07-01-extreme-adversary.md#7-filesystem-threat-model), [7.2](https://github.com/jonasacres/easysafe-doc/blob/master/07-FilesystemThreat/07-02-restricted-adversary.md#7-filesystem-threat-model)
 | How are keys derived? | [3.2](https://github.com/jonasacres/easysafe-doc/blob/master/03-Filesystem/03-02-key-derivations.md#3-filesystem) |
 | How are files encrypted? | [3.1](https://github.com/jonasacres/easysafe-doc/blob/master/03-Filesystem/03-01-tagged-encryption.md#2-filesystem), [3.7](https://github.com/jonasacres/easysafe-doc/blob/master/03-Filesystem/03-07-pages.md#3-filesystem) |
 | How are DHT messages encrypted? | [4.3](https://github.com/jonasacres/easysafe-doc/blob/master/04-DHT/04-03-message-crypto.md#4-distributed-hash-table) |
@@ -75,8 +75,8 @@ I want to know...
 ### Chapter 7: Filesystem Threat Model
 | Chapter | Title | Description
 |-|-|-|
-| 7.1 | [Basic Adversary](07-FilesystemThreat/07-01-basic-adversary.md) | Analysis of filesystem security guarantees assuming an adversary with very strong capabilities
-| 7.2 | [Restricted Adversary](07-FilesystemThreat/07-02-restricted-adversary.md) | Analysis of filesystem security guarantees assuming an adversary with a lesser set of capabilities compared to the basic model
+| 7.1 | [Extreme Adversary](07-FilesystemThreat/07-01-extreme-adversary.md) | Analysis of filesystem security guarantees assuming an adversary with very strong capabilities
+| 7.2 | [Restricted Adversary](07-FilesystemThreat/07-02-restricted-adversary.md) | Analysis of filesystem security guarantees assuming an adversary with a lesser set of capabilities compared to the extreme model
 
 ### Chapter 8: Rationales
 | Chapter | Title | Description
