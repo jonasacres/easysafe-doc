@@ -15,7 +15,7 @@ I want to know...
 |--|--|
 | Which algorithms are used? | [2.2](02-Conventions/02-02-crypto.md#22-cryptographic-function-specifications) |
 | How feasible is a brute-force attack? | [6.2](06-PBKDF/06-02-threat-model.md#6-passphrase-based-key-derivation) |
-| What security claims are made? | [7.1](07-FilesystemThreat/07-01-threat-model#71-overview-of-threat-model)
+| What security claims are made? | [7.1](07-FilesystemThreat/07-01-threat-model.md#71-overview-of-threat-model)
 | How are keys derived? | [3.2](03-Filesystem/03-02-key-derivations.md#3-filesystem) |
 | How are files encrypted? | [3.1](03-Filesystem/03-01-tagged-encryption.md#2-filesystem), [3.7](03-Filesystem/03-07-pages.md#3-filesystem) |
 | How are DHT messages encrypted? | [4.3](04-DHT/04-03-message-crypto.md#4-distributed-hash-table) |
