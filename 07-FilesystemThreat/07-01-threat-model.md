@@ -37,7 +37,7 @@ It is possible that better attacks can be formulated. The reader is encouraged t
 |--|--|--|--
 | Determine the contents of a page in the filesystem | [K+P](blind/read-page-contents#easysafe-attack-sketch.md) | [K](restricted/read-page-contents.md#easysafe-attack-sketch) | [64 + F](extreme/read-page-contents.md#easysafe-attack-sketch) |
 | Determine whether a given file is in the filesystem | [K+P](blind/determine-file-existence.md#easysafe-attack-sketch) | [K](restricted/determine-file-existence.md#easysafe-attack-sketch) | [K](extreme/determine-file-existence.md#easysafe-attack-sketch) |
-| Delete data from the filesystem | [Infeasible](blind/delete-data) | [Infeasible](restricted/delete-data) | [0](extreme/delete-data) |
+| Delete data from the filesystem | [Infeasible](blind/delete-data.md#easysafe-attack-sketch) | [Infeasible](restricted/delete-data.md#easysafe-attack-sketch) | [0](extreme/delete-data.md#easysafe-attack-sketch) |
 | Insert data into the filesystem | [K + P](blind/add-data.md#easysafe-attack-sketch) | [K](restricted/add-data.md#easysafe-attack-sketch) | [K](extreme/add-data.md#easysafe-attack-sketch) |
 | Modify existing data in the filesystem | TODO | TODO | TODO
 | Determine authorship of encrypted page | [Infeasible](blind/determine-authorship.md#easysafe-attack-sketch) | [0*](restricted/determine-authorship.md#easysafe-attack-sketch) | [0*](extreme/determine-authorship.md#easysafe-attack-sketch) |
